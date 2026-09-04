@@ -23,9 +23,6 @@ Uninstallable=no
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
-[Icons]
-Name: "{group}\Moon SDK - Preparar projeto"; Filename: "{app}\sdk\moon.cmd"; WorkingDir: "{app}\sdk"
-
 [Run]
 ; Node.js LTS é baixado e instalado de forma silenciosa antes das dependências.
 Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ""$u='https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi'; $p=Join-Path $env:TEMP 'moon-node.msi'; Invoke-WebRequest -UseBasicParsing $u -OutFile $p; $r=Start-Process msiexec.exe -ArgumentList '/i',$p,'/qn','/norestart' -Wait -PassThru; Remove-Item $p -Force -ErrorAction SilentlyContinue; exit $r.ExitCode"""; StatusMsg: "Baixando e instalando Node.js LTS..."; Flags: runhidden waituntilterminated
@@ -42,5 +39,5 @@ begin
   if CurStep = ssPostInstall then
     MsgBox('Moon SDK instalado com sucesso.'#13#10#13#10 +
       'Abra um novo terminal para que o PATH seja atualizado.'#13#10 +
-      'Depois, clique duas vezes em Moon SDK - Preparar projeto.', mbInformation, MB_OK);
+      'O comando moon já estará disponível nos novos terminais.', mbInformation, MB_OK);
 end;

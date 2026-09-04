@@ -1,6 +1,6 @@
 # Gerar o `install.exe`
 
-O instalador visual é definido em `install.iss`. Para gerar o executável em um Windows, basta executar `build-installer.cmd`; ele instala o Inno Setup automaticamente via winget quando necessário e compila o instalador.
+O instalador visual é definido em `install.iss`. Para gerar o executável em um Windows, abra o arquivo no Inno Setup e compile.
 
 O `install.exe` não embute uma cópia do SDK: durante a instalação ele baixa a branch `main` diretamente de `https://github.com/ls-matheus/moon-sdk`, extrai os arquivos e instala a versão atual publicada no repositório. O computador precisa estar conectado à internet.
 
@@ -22,4 +22,4 @@ O instalador exige privilégios de administrador e faz o seguinte automaticament
 - registra o SDK e o npm global no PATH do sistema;
 - cria um atalho visual para preparar projetos.
 
-O instalador usa uma única base do Moon SDK. O arquivo `setup-moon.bat` continua existindo somente como compatibilidade para instalações antigas; a lógica compartilhada está em `bin/setup.mjs`.
+O instalador usa uma única base do Moon SDK e não depende de launchers auxiliares no repositório.

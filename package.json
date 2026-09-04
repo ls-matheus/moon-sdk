@@ -15,8 +15,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit",
-    "setup": "node bin/setup.mjs"
+    "test": "tsc --noEmit"
   },
   "devDependencies": {
     "typescript": "^5.3.2"

@@ -40,13 +40,7 @@ Nunca exponha `pool`, senha ou chave administrativa no frontend. O navegador dev
 
 ## Interface de terminal
 
-O SDK é único e detecta automaticamente Windows e macOS. O mesmo comando de preparação funciona nos dois sistemas:
-
-```bash
-node caminho/para/SDKs/moon-sdk/bin/setup.mjs ./meu-app
-```
-
-No Windows, `setup-moon.bat` é apenas um atalho de compatibilidade para esse mesmo arquivo; não existe uma implementação separada do SDK. O projeto precisa ter Node.js LTS instalado e o script instala as dependências locais antes de iniciar o ambiente.
+O SDK é único e detecta automaticamente Windows e macOS. O `install.exe` prepara o ambiente visualmente no Windows; depois da instalação, o comando `moon` é disponibilizado automaticamente pelo npm.
 
 Depois de instalar o pacote, a configuração é totalmente local:
 
