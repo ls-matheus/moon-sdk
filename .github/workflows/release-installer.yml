@@ -1,0 +1,48 @@
+name: Build and publish Windows installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release, por exemplo v0.1.0"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Instalar Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Compilar install.exe
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem -Path 'C:\Program Files (x86)', 'C:\Program Files' -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe não foi encontrado após a instalação do Inno Setup.' }
+          & $iscc.FullName installer\install.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path install.exe)) { throw 'O instalador não foi gerado.' }
+
+      - name: Publicar na aba Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$env:RELEASE_TAG" install.exe `
+            --repo "$env:GITHUB_REPOSITORY" `
+            --title "Moon SDK $env:RELEASE_TAG" `
+            --generate-notes
