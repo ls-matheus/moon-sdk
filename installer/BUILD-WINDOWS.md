@@ -2,6 +2,8 @@
 
 O instalador visual é definido em `install.iss`. Para gerar o executável em um Windows, basta executar `build-installer.cmd`; ele instala o Inno Setup automaticamente via winget quando necessário e compila o instalador.
 
+O `install.exe` não embute uma cópia do SDK: durante a instalação ele baixa a branch `main` diretamente de `https://github.com/ls-matheus/moon-sdk`, extrai os arquivos e instala a versão atual publicada no repositório. O computador precisa estar conectado à internet.
+
 Também é possível compilar manualmente:
 
 1. Instale o Inno Setup 7.
