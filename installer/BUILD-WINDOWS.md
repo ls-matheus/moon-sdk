@@ -20,6 +20,7 @@ O instalador exige privilégios de administrador e faz o seguinte automaticament
 - instala o `@moon/sdk` e o `@base44/sdk`;
 - instala as dependências transitivas dos SDKs;
 - registra o SDK e o npm global no PATH do sistema;
-- cria um atalho visual para preparar projetos.
+- cria um desinstalador nativo no Menu Iniciar;
+- remove os caminhos do Moon do PATH ao desinstalar.
 
 O instalador usa uma única base do Moon SDK e não depende de launchers auxiliares no repositório.
