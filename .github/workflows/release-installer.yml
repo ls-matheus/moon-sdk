@@ -2,8 +2,8 @@ name: Build and publish Windows installer
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       tag:
@@ -18,7 +18,7 @@ jobs:
   installer:
     runs-on: windows-latest
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'latest' }}
 
     steps:
       - name: Baixar o código
@@ -42,7 +42,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$env:RELEASE_TAG" install.exe `
-            --repo "$env:GITHUB_REPOSITORY" `
-            --title "Moon SDK $env:RELEASE_TAG" `
-            --generate-notes
+          $tag = $env:RELEASE_TAG
+          gh release view $tag --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag install.exe --repo "$env:GITHUB_REPOSITORY" --clobber
+            gh release edit $tag --repo "$env:GITHUB_REPOSITORY" --title "Moon SDK - versão atualizada" --notes "Instalador gerado automaticamente a partir do commit $env:GITHUB_SHA."
+          } else {
+            gh release create $tag install.exe `
+              --repo "$env:GITHUB_REPOSITORY" `
+              --target "$env:GITHUB_SHA" `
+              --title "Moon SDK - versão atualizada" `
+              --notes "Instalador gerado automaticamente a partir do commit $env:GITHUB_SHA."
+          }

@@ -4,6 +4,8 @@ O instalador visual é definido em `install.iss`. Para gerar o executável em um
 
 O `install.exe` não embute uma cópia do SDK: durante a instalação ele baixa a branch `main` diretamente de `https://github.com/ls-matheus/moon-sdk`, extrai os arquivos e instala a versão atual publicada no repositório. O computador precisa estar conectado à internet.
 
+O workflow `release-installer.yml` recompila o instalador em todo push para `main` e atualiza a release `latest`, substituindo o `install.exe` anterior. Uma execução manual permite criar uma release com uma tag própria, como `v1.0.0`.
+
 Também é possível compilar manualmente:
 
 1. Instale o Inno Setup 7.
