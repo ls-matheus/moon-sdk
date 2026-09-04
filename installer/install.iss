@@ -39,7 +39,7 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -N
 const
   EnvironmentKey = 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment';
 
-procedure UpdateSystemPath(AddEntries: Boolean);
+procedure UpdatePath(RootKey: Integer; AddEntries: Boolean);
 var
   PathValue: string;
   Entries: array[0..2] of string;
@@ -48,7 +48,7 @@ begin
   Entries[0] := ExpandConstant('{app}\sdk');
   Entries[1] := ExpandConstant('{app}\global');
   Entries[2] := ExpandConstant('{app}\global\node_modules\.bin');
-  if not RegQueryStringValue(HKLM, EnvironmentKey, 'Path', PathValue) then
+  if not RegQueryStringValue(RootKey, EnvironmentKey, 'Path', PathValue) then
     PathValue := '';
 
   for I := 0 to 2 do begin
@@ -65,13 +65,14 @@ begin
     Delete(PathValue, 1, 1);
   while (Length(PathValue) > 0) and (PathValue[Length(PathValue)] = ';') do
     Delete(PathValue, Length(PathValue), 1);
-  RegWriteExpandStringValue(HKLM, EnvironmentKey, 'Path', PathValue);
+  RegWriteExpandStringValue(RootKey, EnvironmentKey, 'Path', PathValue);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then begin
-    UpdateSystemPath(True);
+    UpdatePath(HKLM, True);
+    UpdatePath(HKCU, True);
     MsgBox('Moon SDK instalado com sucesso.'#13#10#13#10 +
       'Abra um novo terminal para que o PATH seja atualizado.'#13#10 +
       'O comando moon já estará disponível nos novos terminais.', mbInformation, MB_OK);
@@ -81,5 +82,8 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
-    UpdateSystemPath(False);
+    begin
+      UpdatePath(HKLM, False);
+      UpdatePath(HKCU, False);
+    end;
 end;
