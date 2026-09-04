@@ -33,7 +33,7 @@ Name: "{group}\Desinstalar Moon SDK"; Filename: "{uninstallexe}"; WorkingDir: "{
 Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ""$ErrorActionPreference='Stop'; $zip=Join-Path $env:TEMP 'moon-sdk.zip'; $tmp=Join-Path $env:TEMP 'moon-sdk-extract'; if (Test-Path $tmp) {{ Remove-Item $tmp -Recurse -Force }}; Invoke-WebRequest -UseBasicParsing '{#MoonRepository}' -OutFile $zip; if (!(Test-Path $zip)) {{ throw 'Download do Moon SDK falhou.' }}; Expand-Archive -Path $zip -DestinationPath $tmp -Force; $source=Join-Path $tmp 'moon-sdk-main'; if (!(Test-Path $source)) {{ throw 'O arquivo do GitHub não contém moon-sdk-main.' }}; New-Item -ItemType Directory -Path '{app}\sdk' -Force | Out-Null; Copy-Item (Join-Path $source '*') '{app}\sdk' -Recurse -Force; Remove-Item $zip -Force -ErrorAction SilentlyContinue; Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue"""; StatusMsg: "Baixando Moon SDK do GitHub..."; Flags: runhidden waituntilterminated
 ; Node.js LTS é baixado e instalado de forma silenciosa antes das dependências.
 Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ""$ErrorActionPreference='Stop'; $u='https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi'; $p=Join-Path $env:TEMP 'moon-node.msi'; Invoke-WebRequest -UseBasicParsing $u -OutFile $p; $r=Start-Process msiexec.exe -ArgumentList '/i',$p,'/qn','/norestart' -Wait -PassThru; Remove-Item $p -Force -ErrorAction SilentlyContinue; if ($r.ExitCode -ne 0) {{ exit $r.ExitCode }}"""; StatusMsg: "Baixando e instalando Node.js LTS..."; Flags: runhidden waituntilterminated
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ""$ErrorActionPreference='Stop'; $npm=(Get-Command npm.cmd -ErrorAction Stop).Source; $prefix='{app}\global'; & $npm config set prefix $prefix --global; & $npm install --global --prefix $prefix '{app}\sdk' '@base44/sdk' --force; $moon=Join-Path $prefix 'node_modules\@moon\sdk\bin\moon.mjs'; if (!(Test-Path $moon)) {{ throw 'O Moon SDK não foi instalado corretamente.' }}"""; StatusMsg: "Instalando Moon SDK, Base44 SDK e dependências..."; Flags: runhidden waituntilterminated
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ""$ErrorActionPreference='Stop'; $npm=(Get-Command npm.cmd -ErrorAction Stop).Source; $prefix=(& $npm prefix --global).Trim(); & $npm install --global '{app}\sdk' '@base44/sdk' --force; $moon=Join-Path $prefix 'node_modules\@moon\sdk\bin\moon.mjs'; if (!(Test-Path $moon)) {{ throw ('O Moon SDK não foi instalado em ' + $moon) }}"""; StatusMsg: "Instalando Moon SDK, Base44 SDK e dependências..."; Flags: runhidden waituntilterminated
 
 [Code]
 const
@@ -46,8 +46,8 @@ var
   I: Integer;
 begin
   Entries[0] := ExpandConstant('{app}\sdk');
-  Entries[1] := ExpandConstant('{app}\global');
-  Entries[2] := ExpandConstant('{app}\global\node_modules\.bin');
+  Entries[1] := ExpandConstant('{userappdata}\npm');
+  Entries[2] := ExpandConstant('{app}\sdk');
   if not RegQueryStringValue(RootKey, EnvironmentKey, 'Path', PathValue) then
     PathValue := '';
 

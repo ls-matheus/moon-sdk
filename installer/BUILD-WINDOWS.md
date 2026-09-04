@@ -19,6 +19,7 @@ O instalador exige privilégios de administrador e faz o seguinte automaticament
 - instala Node.js LTS;
 - instala o `@moon/sdk` e o `@base44/sdk`;
 - instala as dependências transitivas dos SDKs;
+- usa o prefixo global padrão do usuário para substituir launchers antigos do npm;
 - registra o SDK e o npm global no PATH do sistema;
 - cria um desinstalador nativo no Menu Iniciar;
 - remove os caminhos do Moon do PATH ao desinstalar.
