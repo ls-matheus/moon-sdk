@@ -44,13 +44,20 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Criar instalador macOS
+        run: bash installer/build-macos.sh
+      - name: Testar instalação e reinstalação reais
         run: |
-          pkgbuild --nopayload --scripts installer/pkg-scripts \
-            --identifier com.moon.sdk.installer \
-            --version 1.0.0 \
-            "Moon-SDK-Installer.pkg"
-          test -f "Moon-SDK-Installer.pkg"
+          sudo installer -pkg Moon-SDK-Installer.pkg -target /
+          /usr/local/bin/moon --help
+          sudo installer -pkg Moon-SDK-Installer.pkg -target /
+          /usr/local/bin/moon --help
+      - name: Mostrar log em caso de falha
+        if: failure()
+        run: sudo cat /var/log/moon-sdk-installer.log || true
       - name: Publicar instalador macOS
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -8,7 +8,7 @@ O workflow `release-installer.yml` recompila o instalador em todo push para `mai
 
 O mesmo workflow também gera `Moon-SDK-Installer.pkg` em um runner macOS. Abra o arquivo para usar o instalador nativo do macOS. Durante a instalação, ele baixa e instala automaticamente o Node.js LTS adequado à arquitetura do Mac, configura o PATH e instala o Moon SDK e o Base44 SDK.
 
-Os builds são independentes: cada instalador é publicado na Release assim que seu próprio workflow termina, sem esperar a outra plataforma.
+Os builds são independentes: cada instalador é publicado na Release assim que seu próprio job termina, sem esperar a outra plataforma. Veja [BUILD-MACOS.md](BUILD-MACOS.md) para detalhes do pacote macOS e dos testes de instalação.
 
 Também é possível compilar manualmente:
 

@@ -1,31 +1,30 @@
 #!/bin/bash
 set -euo pipefail
-
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+umask 022
 exec >>/var/log/moon-sdk-installer.log 2>&1
 echo "--- Moon SDK installer $(date) ---"
-
-arch="$(uname -m)"
-case "$arch" in
-  arm64) node_arch=arm64 ;;
-  x86_64) node_arch=x64 ;;
-  *) echo "Arquitetura não suportada: $arch" >&2; exit 1 ;;
-esac
-
-node_pkg="$(curl -fsSL https://nodejs.org/dist/latest-v22.x/ | grep -oE "node-v[0-9.]+-darwin-${node_arch}\.tar.gz" | head -1)"
-[ -n "$node_pkg" ] || { echo "Não foi possível localizar o Node.js LTS." >&2; exit 1; }
-
-tmp_pkg="$(mktemp /tmp/moon-node.XXXXXX)"
-trap 'rm -f "$tmp_pkg"' EXIT
-curl -fL "https://nodejs.org/dist/latest-v22.x/$node_pkg" -o "$tmp_pkg"
-
-node_dir="/usr/local/lib/nodejs/${node_pkg%.tar.gz}"
-mkdir -p "$node_dir" /usr/local/bin
-tar -xzf "$tmp_pkg" -C "$node_dir" --strip-components=1
-ln -sf "$node_dir/bin/node" /usr/local/bin/node
-ln -sf "$node_dir/bin/npm" /usr/local/bin/npm
-ln -sf "$node_dir/bin/npx" /usr/local/bin/npx
-printf '%s\n' 'export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"' > /etc/paths.d/moon-sdk
-
-export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
-npm install --global @moon/sdk @base44/sdk >/dev/null 2>&1
-exit 0
+trap 'echo "Falha na linha $LINENO (status $?)"' ERR
+[ "${3:-/}" = / ] || { echo "Selecione o disco de inicialização."; exit 1; }
+scripts="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p /usr/local/lib/moon-sdk/releases /usr/local/bin /etc/paths.d
+release="$(mktemp -d /usr/local/lib/moon-sdk/releases/install.XXXXXX)"
+/bin/bash "$scripts/install-runtime.sh" "$release" "$scripts/moon-sdk.tgz"
+chmod 755 "$release"
+ln -sfn "$release" /usr/local/lib/moon-sdk/current
+cat > "$release/moon-launcher" <<'LAUNCHER'
+#!/bin/bash
+export PATH="/usr/local/lib/moon-sdk/current/bin:$PATH"
+exec /usr/local/lib/moon-sdk/current/bin/node /usr/local/lib/moon-sdk/current/lib/node_modules/@moon/sdk/bin/moon.mjs "$@"
+LAUNCHER
+chmod 755 "$release/moon-launcher"
+mv -f "$release/moon-launcher" /usr/local/bin/moon
+printf '%s\n' /usr/local/lib/moon-sdk/current/bin /usr/local/bin > /etc/paths.d/moon-sdk
+chmod 644 /etc/paths.d/moon-sdk
+for command in node npm npx; do
+  if [ ! -e "/usr/local/bin/$command" ] && [ ! -L "/usr/local/bin/$command" ]; then
+    ln -s "/usr/local/lib/moon-sdk/current/bin/$command" "/usr/local/bin/$command"
+  fi
+done
+/usr/local/bin/moon --help
+echo "Instalação concluída."

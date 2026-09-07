@@ -3,3 +3,4 @@ node_modules/
 install.exe
 dist/**/*.tsbuildinfo
 .DS_Store
+*.pkg
