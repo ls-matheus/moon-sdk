@@ -6,7 +6,7 @@ O `install.exe` não embute uma cópia do SDK: durante a instalação ele baixa 
 
 O workflow `release-installer.yml` recompila o instalador em todo push para `main` e atualiza a release `latest`, substituindo o `install.exe` anterior. Uma execução manual permite criar uma release com uma tag própria, como `v1.0.0`.
 
-O mesmo workflow também gera `Moon-SDK-Installer.pkg` em um runner macOS. Abra o arquivo para usar o instalador nativo do macOS. O pacote já inclui Node.js, Moon SDK, Base44 SDK e dependências. A instalação é offline e configura o PATH automaticamente.
+O mesmo workflow também gera `Moon-SDK-Installer.pkg` em um runner macOS. Abra o arquivo para usar o instalador nativo do macOS. O pacote leve baixa do GitHub os recursos versionados (Node.js, Moon SDK, Base44 SDK e dependências prontas), verifica os checksums e configura o PATH automaticamente.
 
 Os builds são independentes: cada instalador é publicado na Release assim que seu próprio job termina, sem esperar a outra plataforma. Veja [BUILD-MACOS.md](BUILD-MACOS.md) para detalhes do pacote macOS e dos testes de instalação.
 

@@ -9,7 +9,7 @@ trap 'echo "Falha na linha $LINENO (status $?)"' ERR
 scripts="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p /usr/local/lib/moon-sdk/releases /usr/local/bin /etc/paths.d
 release="$(mktemp -d /usr/local/lib/moon-sdk/releases/install.XXXXXX)"
-/bin/bash "$scripts/install-runtime.sh" "$release" "$scripts/moon-sdk.tgz"
+/bin/bash "$scripts/install-runtime.sh" "$release" "$scripts"
 chmod 755 "$release"
 ln -sfn "$release" /usr/local/lib/moon-sdk/current
 cat > "$release/moon-launcher" <<'LAUNCHER'

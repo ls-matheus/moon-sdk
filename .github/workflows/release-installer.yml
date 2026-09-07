@@ -42,6 +42,11 @@ jobs:
 
   macos-installer:
     runs-on: macos-latest
+    env:
+      RESOURCE_TAG: macos-resources-${{ github.run_id }}-${{ github.run_attempt }}
+    concurrency:
+      group: macos-installer-${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'latest' }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,14 +54,16 @@ jobs:
           node-version: '22'
       - name: Criar instalador macOS
         run: bash installer/build-macos.sh
-      - name: Testar conteúdo do pacote sem acesso à rede
+      - name: Publicar recursos versionados no GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          testdir="$(mktemp -d)"
-          pkgutil --expand-full Moon-SDK-Installer.pkg "$testdir/package"
-          sandbox-exec -p '(version 1) (allow default) (deny network*)' \
-            /bin/bash "$testdir/package/Scripts/install-runtime.sh" \
-            "$testdir/runtime" "$testdir/package/Scripts/moon-sdk.tgz"
-      - name: Testar instalação e reinstalação reais
+          gh release create "$RESOURCE_TAG" macos-resources/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --latest=false \
+            --title "Recursos macOS - $RESOURCE_TAG" \
+            --notes "Recursos fixos usados pelo instalador macOS deste build. Não remover: instaladores já baixados dependem destes arquivos."
+      - name: Testar instalação e reinstalação baixando do GitHub
         run: |
           sudo installer -pkg Moon-SDK-Installer.pkg -target /
           /usr/local/bin/moon --help

@@ -4,3 +4,4 @@ install.exe
 dist/**/*.tsbuildinfo
 .DS_Store
 *.pkg
+macos-resources/
