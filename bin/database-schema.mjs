@@ -73,8 +73,9 @@ export function discoverSchema(directory) {
       if (!types.includes(type)) throw new Error(`${file}.${name}: tipo precisa ser definido explicitamente.`);
       fields[name] = { type, required: (entity.required || []).includes(name), ...(field.enum ? { enum: field.enum } : {}) };
     }
-    // Do not infer public access from source code.
-    entities[entity.name || basename(file).replace(/\.jsonc?$/, "")] = { access: "private", fields };
+    // Custom authorization cannot be translated by guessing: preserve fail-closed access.
+    // Without custom rules, the portable default is authenticated owner-only data.
+    entities[entity.name || basename(file).replace(/\.jsonc?$/, "")] = { access: Object.hasOwn(entity, "rls") || Object.hasOwn(entity, "permissions") ? "private" : "owner", fields };
   }
   return Object.keys(entities).length ? { schema: normalizeSchema({ version: 1, entities }), source: folder } : null;
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeSchema, compileSql, compileFirestore, schemaHash } from "../bin/database-schema.mjs";
@@ -37,10 +37,11 @@ test("regras Firestore impedem mudança de proprietário e validam campos", () =
   assert.match(rules, /hasOnly/);
   assert.match(rules, /hasAll/);
 });
-test("assistente gera plano apenas com respostas, sem credenciais nem acesso ao banco", async () => {
+test("assistente descobre campos sozinho e pergunta apenas o provedor para gerar plano", async () => {
   const directory = mkdtempSync(join(tmpdir(), "moon-wizard-"));
   try {
-    const responses = ["sql", "mysql", "Note", "owner", "title", "string", "s", ""];
+    writeFileSync(join(directory, "app.ts"), 'moon.entities.Note.create({title: "Hello", done: false})');
+    const responses = ["sql", "mysql"];
     const result = await databaseWizard({
       directory, ask: async () => { assert.ok(responses.length); return responses.shift(); },
       secret: async () => { throw new Error("Não deve pedir credenciais"); },
@@ -49,7 +50,8 @@ test("assistente gera plano apenas com respostas, sem credenciais nem acesso ao 
       planOnly: true, print() {},
     });
     assert.equal(result.provider, "mysql");
-    assert.equal(JSON.parse(readFileSync(join(directory, "moon/schema.json"))).entities.Note.fields.title.required, true);
+    assert.equal(JSON.parse(readFileSync(join(directory, "moon/schema.json"))).entities.Note.fields.title.type, "string");
+    assert.equal(responses.length, 0);
     assert.match(readFileSync(join(directory, "moon/schema.mysql.sql"), "utf8"), /CREATE TABLE/);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

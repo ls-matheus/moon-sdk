@@ -61,7 +61,11 @@ O comando `link` pergunta o banco, grava `moon.config.json`, as variáveis espec
 O wizard é específico para cada opção: Supabase solicita URL e chave pública e valida uma chamada autenticada; Firebase solicita o Web App config e valida o projeto; PostgreSQL, MySQL e SQL solicitam uma connection string e validam host/porta, sendo marcados como backend-only. Segredos ficam somente no `.env.local` e nunca são gravados no JSON.
 # Configurar o banco pelo terminal
 
-Na pasta do aplicativo, execute `moon db .` e responda às perguntas.
-O comando cria `moon/schema.json`, gera o plano do provedor escolhido e testa a estrutura.
+Na pasta do aplicativo, execute `moon db .`, escolha o serviço e informe os acessos.
+O SDK descobre a estrutura nas definições exportadas ou nas gravações JavaScript/TypeScript
+do aplicativo: não pede tabelas, campos ou tipos ao usuário. Cria `moon/schema.json`,
+gera o plano do provedor escolhido e, após confirmação, aplica e testa a estrutura.
+Quando o código não permite identificar a estrutura com segurança, interrompe antes
+de alterar o banco e informa o ponto que precisa de revisão técnica.
 Depois execute `moon run .`. Para gerar apenas o plano, use `moon db . --plan`.
 Veja [DATABASES.md](DATABASES.md) para bancos suportados, credenciais e limites de migração/autenticação.

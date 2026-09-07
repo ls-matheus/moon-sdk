@@ -7,10 +7,24 @@ moon db .
 moon run .
 ```
 
-O assistente pergunta provedor, entidades/campos, acesso, autenticação e credenciais.
+O usuário não precisa criar tabelas nem informar campos, tipos ou relacionamentos.
+O assistente pergunta o serviço, os dados de acesso e confirma alterações no servidor.
 Se existir `moon/schema.json`, reutiliza o esquema; também importa campos de
-`base44/entities/*.json` e JSONC. Sem esses arquivos, encontra nomes de entidades
-no código e pede os tipos: não tenta adivinhar estruturas a partir de regex.
+`base44/entities/*.json` e JSONC. Sem esses arquivos, analisa estaticamente JavaScript/
+TypeScript e as gravações `entities.Nome.create`, `update` e `bulkCreate` com listas
+literais. Resolve tipos, variáveis, interfaces e spreads usando o compilador TypeScript,
+sem executar o código do aplicativo. Dependências de tipos precisam estar disponíveis.
+Campos inferidos são opcionais; números usam ponto flutuante para não truncar valores.
+Objetos e listas usam JSON. Regras obrigatórias explícitas são preservadas na importação.
+Tipos dinâmicos, conflitos e entidades apenas lidas sem definição interrompem a operação
+antes de conectar ao banco, com arquivo/linha para revisão técnica. Não solicita que o
+usuário leigo desenhe um esquema. Outras APIs/linguagens ainda precisam de um importador.
+O padrão automático é acesso por proprietário autenticado; definições Base44 com regras
+de acesso personalizadas ficam privadas, pois essas regras não podem ser traduzidas
+com segurança por suposição. Isso pode exigir adaptação técnica de apps compartilhados.
+Relacionamentos são preservados quando declarados no esquema Moon; não são inventados
+a partir de nomes como `cliente_id`. O arquivo gerado pode ser inspecionado por um técnico,
+mas não precisa ser preenchido pelo usuário.
 `moon db . --plan` gera o plano sem acessar um banco.
 
 O esquema comum usa string, integer, number, boolean, json, datetime e uuid.

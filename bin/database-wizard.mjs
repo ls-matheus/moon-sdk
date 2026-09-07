@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { discoverSchema, discoverEntityNames, normalizeSchema, compileSql, compileFirestore, identifier, types } from "./database-schema.mjs";
+import { discoverSchema, compileSql, compileFirestore, identifier } from "./database-schema.mjs";
+import { inferApplicationSchema } from "./database-discovery.mjs";
 import { connectSql, ensureDatabase, applySqlSchema } from "./database-sql.mjs";
 import { provisionFirebase } from "./database-firebase.mjs";
 
@@ -16,52 +17,22 @@ export async function databaseWizard({ directory, ask, secret, config = {}, env 
   };
   let provider = await choose("Banco", ["supabase", "postgres", "mysql", "firebase", "sql"], config.provider === "none" ? "supabase" : config.provider || "supabase");
   if (provider === "sql") provider = await choose("Dialeto SQL (outros motores exigem um driver específico)", ["postgres", "mysql"], "postgres");
-  let discovered = discoverSchema(directory);
-  let schema = discovered?.schema;
-  if (!schema) {
-    const names = discoverEntityNames(directory);
-    const entities = (await answer("Entidades separadas por vírgula", names.join(","))).split(",").map(n => n.trim()).filter(Boolean);
-    const definitions = {};
-    for (const entity of entities) {
-      identifier(entity);
-      const access = await choose(`${entity}: acesso (owner exige login; private somente backend)`, ["owner", "private"], "owner");
-      print(`${entity}: id, created_at, updated_at${access === "owner" ? " e user_id" : ""} são automáticos.`);
-      const fields = {};
-      while (true) {
-        const name = await answer("Nome do próximo campo (Enter encerra esta entidade)");
-        if (!name) break;
-        identifier(name);
-        if (fields[name]) { print("Campo já informado."); continue; }
-        const type = await choose("Tipo de " + name, types, "string");
-        const required = await yes("Campo obrigatório?");
-        const field = { type, required };
-        if (type === "uuid") {
-          const entity = await answer("Relacionamento: entidade de destino (Enter = nenhum)");
-          if (entity) field.references = { entity, field: "id" };
-        }
-        fields[name] = field;
-      }
-      definitions[entity] = { access, fields };
-    }
-    schema = normalizeSchema({ version: 1, entities: definitions });
-  } else {
-    print("Esquema carregado de " + discovered.source);
-    // Imported entity JSON describes fields, not authorization intent.
-    if (!discovered.source.endsWith("schema.json")) for (const [entity, def] of Object.entries(schema.entities)) {
-      def.access = await choose(entity + ": acesso", ["owner", "private"], "owner");
-    }
-    schema = normalizeSchema(schema);
-  }
+  print("Analisando a estrutura de dados do aplicativo automaticamente...");
+  const discovered = discoverSchema(directory) || inferApplicationSchema(directory);
+  const schema = discovered.schema;
+  print("Estrutura identificada a partir de " + discovered.source);
+  // Compile before writing files: unsupported features must not leave a partial plan.
+  const plan = provider === "firebase" ? compileFirestore(schema) : compileSql(schema, provider).join(";\n\n") + ";\n";
   const folder = resolve(directory, "moon");
   mkdirSync(folder, { recursive: true });
   writeFileSync(resolve(folder, "schema.json"), JSON.stringify(schema, null, 2) + "\n");
-  const plan = provider === "firebase" ? compileFirestore(schema) : compileSql(schema, provider).join(";\n\n") + ";\n";
   const planPath = resolve(folder, provider === "firebase" ? "firestore.rules" : `schema.${provider}.sql`);
   writeFileSync(planPath, plan);
   print("Plano salvo em " + planPath);
-  for (const [entity, definition] of Object.entries(schema.entities)) print(`  ${entity}: ${Object.entries(definition.fields).map(([name, field]) => name + ":" + field.type).join(", ")}; acesso ${definition.access}`);
+  print(`${Object.keys(schema.entities).length} conjunto(s) de dados preparado(s). Os detalhes técnicos estão na pasta moon.`);
+  print("Dados pessoais ficam separados por usuário; estruturas marcadas como privadas permanecem bloqueadas no navegador.");
   if (planOnly) return { planned: true, provider };
-  if (!await yes("Aplicar este plano no banco?")) { print("Plano preservado; banco não alterado."); return { applied: false }; }
+  if (!await yes("Preparar o banco deste aplicativo agora?")) { print("Plano preservado; banco não alterado."); return { applied: false }; }
   let report;
   const values = { ...env };
   const authProvider = provider === "supabase" ? "supabase" : provider === "firebase" ? "firebase"
