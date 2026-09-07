@@ -1,0 +1,28 @@
+#!/bin/bash
+set -euo pipefail
+
+arch="$(uname -m)"
+case "$arch" in
+  arm64) node_arch=arm64 ;;
+  x86_64) node_arch=x64 ;;
+  *) echo "Arquitetura não suportada: $arch" >&2; exit 1 ;;
+esac
+
+node_pkg="$(curl -fsSL https://nodejs.org/dist/latest-v22.x/ | grep -oE "node-v[0-9.]+-darwin-${node_arch}\.tar.gz" | head -1)"
+[ -n "$node_pkg" ] || { echo "Não foi possível localizar o Node.js LTS." >&2; exit 1; }
+
+tmp_pkg="$(mktemp /tmp/moon-node.XXXXXX.tar.gz)"
+trap 'rm -f "$tmp_pkg"' EXIT
+curl -fL "https://nodejs.org/dist/latest-v22.x/$node_pkg" -o "$tmp_pkg"
+
+node_dir="/usr/local/lib/nodejs/${node_pkg%.tar.gz}"
+mkdir -p "$node_dir" /usr/local/bin
+tar -xzf "$tmp_pkg" -C "$node_dir" --strip-components=1
+ln -sf "$node_dir/bin/node" /usr/local/bin/node
+ln -sf "$node_dir/bin/npm" /usr/local/bin/npm
+ln -sf "$node_dir/bin/npx" /usr/local/bin/npx
+printf '%s\n' 'export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"' > /etc/paths.d/moon-sdk
+
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+npm install --global @moon/sdk @base44/sdk >/dev/null 2>&1
+exit 0

@@ -44,16 +44,16 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Criar aplicativo instalador macOS
+      - name: Criar instalador macOS
         run: |
-          rm -rf dmg-root install.dmg
-          mkdir -p dmg-root
-          osacompile -o "dmg-root/Moon SDK Installer.app" installer/MoonSDKInstaller.applescript
-          hdiutil create -volname "Moon SDK" -srcfolder dmg-root -ov -format UDZO install.dmg
-          test -f install.dmg
-      - name: Publicar install.dmg
+          pkgbuild --nopayload --scripts installer/pkg-scripts \
+            --identifier com.moon.sdk.installer \
+            --version 1.0.0 \
+            "Moon-SDK-Installer.pkg"
+          test -f "Moon-SDK-Installer.pkg"
+      - name: Publicar instalador macOS
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Moon SDK - versão atualizada" --notes "Instaladores gerados automaticamente." || true
-          gh release upload "$RELEASE_TAG" install.dmg --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$RELEASE_TAG" "Moon-SDK-Installer.pkg" --repo "$GITHUB_REPOSITORY" --clobber
