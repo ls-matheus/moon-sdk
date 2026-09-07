@@ -97,6 +97,7 @@ export interface MoonClient {
     auth: {
         me(): Promise<User | null>;
         isAuthenticated(): Promise<boolean>;
+        getAccessToken(): Promise<string | undefined>;
         loginViaEmailPassword(email: string, password: string): Promise<{
             access_token?: string;
             user?: User | null;

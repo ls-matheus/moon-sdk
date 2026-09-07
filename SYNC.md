@@ -55,6 +55,50 @@ reinicie `moon run` para atualizar a cópia: esta primeira versão não espelha
 edições ao vivo. As cópias geradas permanecem locais e não devem ser editadas.
 Os comandos antigos `dev`/`start` não implementam esta cópia: use `moon run`.
 
+### Login e funções na execução local
+
+A cópia local usa a tela do aplicativo quando reconhecida; caso contrário,
+apresenta cadastro/login do provedor antes de montar o aplicativo.
+Contas e sessões do Base44 não são transferidas para Supabase/Firebase. Se o provedor
+exigir confirmação por e-mail, confirme antes de entrar. Configure seus URLs de
+redirecionamento no painel do provedor. O modo `--no-db` continua sendo apenas visual.
+
+Chamadas `functions.invoke` usam um endpoint local autenticado e preservam o formato
+`response.data`. O executor suporta handlers JS/TS com `export default`, importação
+de `createClientFromRequest`, leituras de entidades (`list/filter/get`) e
+`integrations.Core.InvokeLLM({prompt})`, com PostgreSQL/Supabase/MySQL. Ele preserva
+o código do prompt e as regras de negócio do handler, sem nomes de funções fixos.
+Não executa automaticamente funções no Base44 remoto como alternativa.
+
+**No executor local, `asServiceRole` não concede privilégios administrativos:**
+as consultas continuam limitadas ao usuário autenticado. Funções que dependem de
+administração, gravações, dependências externas, Deno ou APIs adicionais precisam
+de adaptação explícita. Workers não recebem as credenciais do processo pai e têm
+limites de memória/tempo/operações. Isso não certifica execução segura de código
+hostil: execute apenas projetos confiáveis, assim como ao instalar suas dependências.
+As notas usadas no prompt são enviadas ao provedor de IA configurado pelo usuário.
+
+### Uma única tela de login
+
+O Moon analisa os imports do frontend a partir da entrada em `index.html`.
+Se o código utilizado chama `loginViaEmailPassword` ou `loginWithProvider`,
+preserva a interface própria e conecta essas chamadas ao provedor configurado.
+Não coloca a tela padrão antes dela. Arquivos de login não importados,
+comentários e chamadas ao login hospedado (`redirectToLogin`) não contam como
+uma tela local. Sem login próprio, a tela padrão exige sessão antes de abrir o app.
+
+As rotas convencionais `/login`, `/Login`, `/signin` e `/entrar` são reconhecidas
+em `<Route>` e no mapa `PAGES` do Base44. Logins embutidos ficam sob controle do
+aplicativo. Para wrappers de autenticação ou rotas não reconhecidas, configure
+`"authUi": { "mode": "app", "loginPath": "/acesso" }` em `moon.config.json`.
+`mode: "moon"` força a tela padrão; o padrão é `"auto"`. Nenhum modo desativa
+as permissões do banco. OAuth continua exigindo configuração no provedor novo;
+usuários, senhas e configuração OAuth do Base44 não são migrados automaticamente.
+
+Após atualizar o SDK ou o código, pare o `moon run` anterior e inicie novamente:
+ele gera uma nova cópia de execução. Uma aba antiga ou um processo de instalação
+anterior pode continuar sem `functions.invoke` até esse reinício.
+
 ## Alterações de banco
 
 ```sh

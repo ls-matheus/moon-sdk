@@ -87,6 +87,7 @@ export function createClient(db: DatabaseAdapter): MoonClient {
   const auth = {
     async me() { return (await db.auth.getUser()).user; },
     async isAuthenticated() { return Boolean((await db.auth.getSession()).session); },
+    async getAccessToken() { return (await db.auth.getSession()).session?.access_token; },
     async loginViaEmailPassword(email: string, password: string) {
       const result = await db.auth.signInWithPassword({ email, password });
       token = result.session?.access_token;

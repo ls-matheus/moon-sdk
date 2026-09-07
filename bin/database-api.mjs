@@ -75,14 +75,14 @@ export function authorizeQuery(payload, schema, user) {
   return request;
 }
 export async function queryDatabase(payload, token, config, env, directory) {
-  if (!["postgres", "mysql"].includes(config.provider)) throw new Error("Este endpoint atende PostgreSQL e MySQL.");
+  if (!["postgres", "mysql", "supabase"].includes(config.provider)) throw new Error("Este endpoint atende PostgreSQL, Supabase e MySQL.");
   const schema = discoverSchema(directory)?.schema;
   if (!schema) throw new Error("Schema ausente.");
   const user = await verifyUser(token, config, env);
   const request = authorizeQuery(payload, schema, user);
   const connection = await connectSql(config.provider, env.MOON_DATABASE_URL);
   try {
-    const adapter = createSqlAdapter(connection, config.provider, schema);
+    const adapter = createSqlAdapter(connection, config.provider === "supabase" ? "postgres" : config.provider, schema);
     const table = adapter.from(request.table);
     let query = request.action === "select" ? table.select((request.select || ["*"]).join(","))
       : request.action === "insert" ? table.insert(request.values) : request.action === "update" ? table.update(request.values) : table.delete();

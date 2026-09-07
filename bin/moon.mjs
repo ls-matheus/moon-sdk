@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, chmodSync } from "node:fs";
 import { resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -250,7 +250,7 @@ async function configureAi() {
     const answer = (await askLine("Este projeto usa IA. Configurar uma API agora? (S/n)")).trim().toLowerCase();
     if (!["s", "sim", "y", "yes"].includes(answer)) return false;
     const provider = (await askLine("Provedor (openai, anthropic, gemini ou compatível)")).trim();
-    const apiKey = (await askLine("Chave da API")).trim();
+    const apiKey = (await askSecret(askLine, "Chave da API")).trim();
     const baseUrl = (await askLine("URL base opcional")).trim();
     const model = (await askLine("Modelo opcional")).trim();
     if (!provider || !apiKey) throw new Error("Provedor e chave da API são necessários para configurar IA.");
@@ -266,13 +266,15 @@ async function configureAi() {
 }
 
 async function runLocalProcesses() {
+  // configureAi can save credentials after the first environment load.
+  loadEnvFile();
   const serverPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "local-server.mjs");
   let frontendDir = findRunnableProject(projectDir);
   if (frontendDir) {
     const { prepareLocalRuntime } = await import("./local-runtime.mjs");
     frontendDir = prepareLocalRuntime(frontendDir);
     print("Preparando cópia de execução local; os arquivos compartilhados com Base44 serão preservados.");
-    migrateImportedProject(frontendDir);
+    await migrateImportedProject(frontendDir);
   }
   const backend = spawn(process.execPath, [serverPath], { cwd: projectDir, stdio: "inherit", env: process.env });
   const frontend = frontendDir ? spawn(npmCommand, ["run", "dev"], { cwd: frontendDir, stdio: "inherit", env: process.env, shell: windows }) : null;
@@ -286,8 +288,8 @@ async function runLocalProcesses() {
   backend.once("exit", (code) => { if (code && code !== 143) { if (frontend && !frontend.killed) frontend.kill("SIGTERM"); process.exitCode = code; } });
   if (frontend) frontend.once("error", (error) => { console.error(`Frontend não iniciou: ${error.message}`); stop(); process.exitCode = 1; });
   if (frontend) frontend.once("exit", (code) => { if (code && code !== 0 && code !== 143) console.error(`Frontend encerrou com código ${code}. Verifique a saída do Vite acima.`); });
-  print("Backend local: http://localhost:8787");
-  if (frontend) print(`Frontend local: http://localhost:5173 (projeto: ${frontendDir})`);
+  print(`Backend local: http://localhost:${process.env.MOON_BACKEND_PORT || 8787}`);
+  if (frontend) print(`Frontend local: confira o endereço mostrado pelo Vite (projeto: ${frontendDir})`);
   else print("Frontend local: nenhum script dev encontrado");
 }
 
@@ -320,13 +322,13 @@ function findRunnableProject(directory) {
   return null;
 }
 
-function migrateImportedProject(appDir) {
+async function migrateImportedProject(appDir) {
   const packagePath = resolve(appDir, "package.json");
   const clientPath = ["src/api/base44Client.js", "src/api/base44Client.ts", "src/lib/base44Client.js", "src/lib/base44Client.ts"]
     .map((relativePath) => resolve(appDir, relativePath)).find((candidate) => existsSync(candidate));
   if (!existsSync(packagePath)) return;
   const sdkPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
-  const install = spawnSync(npmCommand, ["install", "--save", pathToFileURL(sdkPath).href], { cwd: appDir, stdio: "inherit", shell: windows });
+  const install = spawnSync(npmCommand, ["install", "--save", windows ? `"${sdkPath}"` : sdkPath], { cwd: appDir, stdio: "inherit", shell: windows });
   if (install.status !== 0) throw new Error("não foi possível instalar o Moon no projeto importado");
   const activeConfig = readConfig();
   writeEnvValues(withRuntimeAliases(activeConfig.provider, { ...readEnvValues(activeConfig.env || []), VITE_MOON_DEV_AUTH_BYPASS: activeConfig.provider === "none" ? "true" : "false" }), resolve(appDir, ".env.local"));
@@ -340,7 +342,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react()],
   resolve: { alias: { "@": path.resolve(process.cwd(), "src") } },
-  server: { proxy: { "/api": "http://127.0.0.1:8787" } },
+  server: { port: ${Number(process.env.MOON_FRONTEND_PORT || 5173)}, strictPort: true, proxy: { "/api": "http://127.0.0.1:${Number(process.env.MOON_BACKEND_PORT || 8787)}" } },
 });
 `);
     const uninstall = spawnSync(npmCommand, ["uninstall", "@base44/vite-plugin"], { cwd: appDir, stdio: "inherit", shell: windows });
@@ -351,7 +353,11 @@ export default defineConfig({
   if (!source.includes("@base44/sdk") && !source.includes("Configure a API de IA") && !source.includes("base44.app") && !source.includes("createMemoryAdapter") && !source.includes("createBrowserClient")) return;
   const backupPath = clientPath + ".before-moon";
   if (!existsSync(backupPath)) writeFileSync(backupPath, source);
+  const { installLoginBootstrap } = await import("./runtime-auth.mjs");
+  const loginUi = installLoginBootstrap(appDir, clientPath, activeConfig.provider, activeConfig.authUi);
+  print(loginUi.mode === 'app' ? '✓ Tela de login do aplicativo preservada; autenticação pelo provedor configurado.' : '✓ Aplicativo sem login próprio: usando a tela padrão do Moon.');
   writeFileSync(clientPath, `import { createBrowserClient } from "@moon/sdk";
+import { createFunctionInvoker, createLoginRedirect } from "/src/moon-client-bridge.mjs";
 
 const sdk = createBrowserClient({
   provider: import.meta.env.VITE_MOON_PROVIDER || "supabase",
@@ -369,23 +375,25 @@ const auth = {
   verifyOtp: params => sdk.auth.verifyOtp({ ...params, token: params.otpCode || params.token }),
   resend: params => sdk.auth.resendOtp(params),
 };
+export const moonAuth = sdk.auth;
 export const base44 = {
   auth: {
     me: () => sdk.auth.me(), isAuthenticated: () => sdk.auth.isAuthenticated(),
     loginViaEmailPassword: (email, password) => sdk.auth.loginViaEmailPassword(email, password),
     register: (params) => sdk.auth.register(params), updateMe: (data) => sdk.auth.updateMe(data),
     resetPasswordRequest: (email) => sdk.auth.resetPasswordForEmail(email), resetPassword: () => Promise.reject(new Error("Redefinição por token deve ser adaptada ao provedor escolhido.")),
-    logout: () => sdk.auth.logout(), setToken: (token) => sdk.auth.setToken(token),
+    logout: async () => { await sdk.auth.logout(); window.location.reload(); }, setToken: (token) => sdk.auth.setToken(token),
     loginWithProvider: (provider, redirectTo) => sdk.auth.loginWithProvider(provider, redirectTo),
     verifyOtp: (params) => auth.verifyOtp(params), resendOtp: (email) => auth.resend({ email, type: "signup" }),
     onAuthStateChange: (callback) => sdk.auth.onChange(callback),
-    redirectToLogin: (url) => { window.location.href = "/login?returnTo=" + encodeURIComponent(url || window.location.href); },
+    redirectToLogin: createLoginRedirect(${JSON.stringify(loginUi)}),
   },
   app: { getPublicSettings: async () => ({}) },
   entities: sdk.entities,
+  functions: { invoke: createFunctionInvoker(sdk.auth) },
   agents: {
     createConversation: async () => ({ id: crypto.randomUUID(), messages: [] }),
-    addMessage: async (conversation, message) => { const response = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [...(conversation.messages || []), message] }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Falha ao consultar a IA."); const reply = { role: "assistant", content: data.content }; conversation.messages = [...(conversation.messages || []), message, reply]; return conversation; },
+    addMessage: async (conversation, message) => { const response = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (await sdk.auth.getAccessToken() || "") }, body: JSON.stringify({ messages: [...(conversation.messages || []), message] }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Falha ao consultar a IA."); const reply = { role: "assistant", content: data.content }; conversation.messages = [...(conversation.messages || []), message, reply]; return conversation; },
     subscribeToConversation: (id, callback) => { void id; void callback; return () => {}; },
   },
 };

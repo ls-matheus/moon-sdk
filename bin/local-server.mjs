@@ -3,7 +3,8 @@
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { queryDatabase } from "./database-api.mjs";
+import { queryDatabase, verifyUser } from "./database-api.mjs";
+import { invokeLocalFunction } from "./function-runtime.mjs";
 
 const port = Number(process.env.MOON_BACKEND_PORT || 8787);
 const projectDir = process.cwd();
@@ -15,6 +16,7 @@ function loadConfig() {
 }
 
 async function askAi(messages) {
+  if (!Array.isArray(messages) || !messages.length || messages.length > 100 || messages.some(message => !["user", "assistant", "system"].includes(message.role) || typeof message.content !== "string" || message.content.length > 100000)) throw new Error("Mensagens de IA inválidas.");
   const provider = (process.env.MOON_AI_PROVIDER || "openai").toLowerCase();
   const key = process.env.MOON_AI_API_KEY;
   if (!key) throw new Error("API de IA não configurada");
@@ -29,14 +31,24 @@ async function askAi(messages) {
     body = { model, max_tokens: 1024, messages: messages.filter((message) => message.role !== "system") };
   }
   if (provider === "gemini") {
-    url = `${base.replace(/\/$/, "")}/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-    headers = { "Content-Type": "application/json" };
+    url = `${base.replace(/\/$/, "")}/models/${encodeURIComponent(model)}:generateContent`;
+    headers = { "Content-Type": "application/json", "x-goog-api-key": key };
     body = { contents: messages.map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: [{ text: message.content }] })) };
   }
-  const result = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+  let result;
+  try {
+    result = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(60000) });
+  } catch (error) {
+    error.publicMessage = error.name === "TimeoutError" ? "O provedor de IA demorou mais de 60 segundos. Tente novamente." : "Não foi possível conectar ao provedor de IA. Confira sua conexão.";
+    throw error;
+  }
   const data = await result.json();
-  if (!result.ok) throw new Error(data.error?.message || data.message || `IA respondeu HTTP ${result.status}`);
-  const content = provider === "anthropic" ? data.content?.[0]?.text : provider === "gemini" ? data.candidates?.[0]?.content?.parts?.[0]?.text : data.choices?.[0]?.message?.content;
+  if (!result.ok) {
+    const error = new Error(`IA respondeu HTTP ${result.status}`);
+    error.publicMessage = result.status === 429 ? "A IA atingiu o limite de uso/cota. Confira a conta do provedor." : result.status === 404 ? "O modelo de IA configurado não está disponível para esta API/conta." : [401,403].includes(result.status) ? "A chave de IA foi recusada. Confira a chave e suas permissões." : "O provedor de IA recusou a solicitação. Confira a configuração.";
+    throw error;
+  }
+  const content = provider === "anthropic" ? data.content?.[0]?.text : provider === "gemini" ? data.candidates?.[0]?.content?.parts?.filter(part => !part.thought && part.text).map(part => part.text).join("") : data.choices?.[0]?.message?.content;
   if (!content) throw new Error("A IA não retornou conteúdo");
   return content;
 }
@@ -44,7 +56,8 @@ async function askAi(messages) {
 const server = createServer((request, response) => {
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   const origin = request.headers.origin || "";
-  if (/^https?:\/\/localhost:\d+$/.test(origin)) response.setHeader("Access-Control-Allow-Origin", origin);
+  if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) { response.statusCode = 403; response.end(JSON.stringify({error:"Origem não permitida."})); return; }
+  if (origin) response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (request.method === "OPTIONS") { response.statusCode = 204; response.end(); return; }
   if (request.method === "POST" && request.url === "/api/database") {
@@ -72,17 +85,25 @@ const server = createServer((request, response) => {
     });
     return;
   }
-  if (request.method === "POST" && request.url === "/api/ai/chat") {
-    let raw = "";
-    request.on("data", (chunk) => { raw += chunk; });
+  if (request.method === "POST" && (request.url === "/api/ai/chat" || request.url.startsWith("/api/functions/"))) {
+    let raw = "", size = 0, oversized = false;
+    request.on("data", (chunk) => { size += chunk.length; if (size > 1048576) {oversized = true; return;} raw += chunk; });
     request.on("end", async () => {
       try {
+        if (oversized) throw new Error("Requisição excede 1 MB.");
+        const token = (request.headers.authorization || "").replace(/^Bearer /, "");
+        if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         const payload = JSON.parse(raw || "{}");
+        if (request.url.startsWith("/api/functions/")) {
+          const result = await invokeLocalFunction(request.url.slice("/api/functions/".length), payload, token, loadConfig(), process.env, projectDir, askAi);
+          response.statusCode = result.status; response.end(JSON.stringify(result.data)); return;
+        }
+        await verifyUser(token, loadConfig(), process.env);
         const content = await askAi(Array.isArray(payload.messages) ? payload.messages : []);
         response.end(JSON.stringify({ content }));
       } catch (error) {
         response.statusCode = 502;
-        response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        response.end(JSON.stringify({ error: error.publicMessage || "Falha na função/IA local. Confira login, configuração e recursos suportados." }));
       }
     });
     return;
