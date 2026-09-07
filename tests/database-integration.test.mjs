@@ -4,6 +4,31 @@ import { connectSql, ensureDatabase, applySqlSchema } from "../bin/database-sql.
 import { normalizeSchema } from "../bin/database-schema.mjs";
 import { createSqlAdapter, createClient } from "../dist/index.js";
 
+test("Supabase: políticas RLS isolam proprietários em PostgreSQL", { skip: !process.env.MOON_TEST_POSTGRES_URL }, async () => {
+  const address = new URL(process.env.MOON_TEST_POSTGRES_URL);
+  address.pathname = "/moon_supabase_ci";
+  await ensureDatabase("postgres", address.href, { create: true });
+  const connection = await connectSql("postgres", address.href);
+  try {
+    await connection.query("CREATE SCHEMA IF NOT EXISTS auth");
+    await connection.query("CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$");
+    await connection.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF; END $$");
+    await connection.query("GRANT USAGE ON SCHEMA auth TO authenticated");
+    const schema = normalizeSchema({ version: 1, entities: { Note: { access: "owner", fields: { title: { type: "string", required: true } } } } });
+    await applySqlSchema(connection, "supabase", schema);
+    await connection.query("SET ROLE authenticated");
+    const first = "00000000-0000-4000-8000-000000000001";
+    await connection.query("SET request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001'");
+    const client = createClient(createSqlAdapter(connection, "postgres", schema));
+    const note = await client.entities.Note.create({ title: "Privada", user_id: first });
+    await connection.query("SET request.jwt.claim.sub = '00000000-0000-4000-8000-000000000002'");
+    await assert.rejects(client.entities.Note.get(note.id), /not found/);
+    await assert.rejects(client.entities.Note.create({ title: "Forjada", user_id: first }));
+    await connection.query("SET request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001'");
+    await client.entities.Note.delete(note.id);
+  } finally { await connection.close(); }
+});
+
 for (const provider of ["postgres", "mysql"]) {
   const url = process.env["MOON_TEST_" + provider.toUpperCase() + "_URL"];
   test(provider + ": criação, reinstalação, CRUD e rollback em servidor real", { skip: !url }, async () => {
