@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+exec >>/var/log/moon-sdk-installer.log 2>&1
+echo "--- Moon SDK installer $(date) ---"
+
 arch="$(uname -m)"
 case "$arch" in
   arm64) node_arch=arm64 ;;
@@ -11,7 +14,7 @@ esac
 node_pkg="$(curl -fsSL https://nodejs.org/dist/latest-v22.x/ | grep -oE "node-v[0-9.]+-darwin-${node_arch}\.tar.gz" | head -1)"
 [ -n "$node_pkg" ] || { echo "Não foi possível localizar o Node.js LTS." >&2; exit 1; }
 
-tmp_pkg="$(mktemp /tmp/moon-node.XXXXXX.tar.gz)"
+tmp_pkg="$(mktemp /tmp/moon-node.XXXXXX)"
 trap 'rm -f "$tmp_pkg"' EXIT
 curl -fL "https://nodejs.org/dist/latest-v22.x/$node_pkg" -o "$tmp_pkg"
 
