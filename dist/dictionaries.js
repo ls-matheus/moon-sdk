@@ -7,7 +7,7 @@ const safeIdentifier = (value) => {
 const relational = (provider, quote, placeholder) => ({
     provider,
     tableName: (entity) => safeIdentifier(snakeCase(entity)),
-    columnName: (field) => safeIdentifier(snakeCase(field)),
+    columnName: safeIdentifier,
     operators: { $eq: "=", $neq: "<>", $gt: ">", $gte: ">=", $lt: "<", $lte: "<=", $in: "IN", $ilike: "ILIKE", $is: "IS" },
     placeholders: placeholder,
     quoteIdentifier: (identifier) => `${quote}${safeIdentifier(identifier)}${quote}`,

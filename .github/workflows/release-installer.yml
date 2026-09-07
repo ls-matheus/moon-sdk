@@ -17,7 +17,10 @@ env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'latest' }}
 
 jobs:
+  database-contracts:
+    uses: ./.github/workflows/database-tests.yml
   windows-installer:
+    needs: database-contracts
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +44,7 @@ jobs:
           gh release upload "$RELEASE_TAG" install.exe --repo "$GITHUB_REPOSITORY" --clobber
 
   macos-installer:
+    needs: database-contracts
     runs-on: macos-latest
     env:
       RESOURCE_TAG: macos-resources-${{ github.run_id }}-${{ github.run_attempt }}

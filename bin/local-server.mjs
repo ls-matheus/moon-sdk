@@ -3,6 +3,7 @@
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { queryDatabase } from "./database-api.mjs";
 
 const port = Number(process.env.MOON_BACKEND_PORT || 8787);
 const projectDir = process.cwd();
@@ -44,8 +45,33 @@ const server = createServer((request, response) => {
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   const origin = request.headers.origin || "";
   if (/^https?:\/\/localhost:\d+$/.test(origin)) response.setHeader("Access-Control-Allow-Origin", origin);
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (request.method === "OPTIONS") { response.statusCode = 204; response.end(); return; }
+  if (request.method === "POST" && request.url === "/api/database") {
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+      response.statusCode = 403; response.end(JSON.stringify({ error: "Origem não permitida." })); return;
+    }
+    let raw = "", size = 0, oversized = false;
+    request.on("data", chunk => {
+      size += chunk.length;
+      if (size > 1048576) { oversized = true; return; }
+      raw += chunk;
+    });
+    request.on("end", async () => {
+      try {
+        if (oversized) throw new Error("Requisição excede 1 MB.");
+        const token = (request.headers.authorization || "").replace(/^Bearer /, "");
+        const result = await queryDatabase(JSON.parse(raw), token, loadConfig(), process.env, projectDir);
+        response.end(JSON.stringify(result));
+      } catch (error) {
+        response.statusCode = 400;
+        // Do not return driver details or administrative connection information to browsers.
+        console.error("Moon database:", error.code || error.name);
+        response.end(JSON.stringify({ error: "Operação recusada. Verifique login, campos e configuração do banco." }));
+      }
+    });
+    return;
+  }
   if (request.method === "POST" && request.url === "/api/ai/chat") {
     let raw = "";
     request.on("data", (chunk) => { raw += chunk; });

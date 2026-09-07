@@ -5,3 +5,5 @@ dist/**/*.tsbuildinfo
 .DS_Store
 *.pkg
 macos-resources/
+tests/generated-firestore.rules
+*-debug.log

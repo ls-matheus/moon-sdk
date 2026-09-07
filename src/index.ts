@@ -6,6 +6,7 @@ import type {
 export type * from "./types.js";
 export * from "./dictionaries.js";
 export * from "./adapters.js";
+export * from "./browser.js";
 
 function unwrap<T>(query: EntityQuery<T>): Promise<T[]> {
   return query.then(({ data, error }) => {

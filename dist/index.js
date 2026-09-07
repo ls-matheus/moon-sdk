@@ -1,5 +1,6 @@
 export * from "./dictionaries.js";
 export * from "./adapters.js";
+export * from "./browser.js";
 function unwrap(query) {
     return query.then(({ data, error }) => {
         if (error)

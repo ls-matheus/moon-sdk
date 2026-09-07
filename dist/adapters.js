@@ -38,100 +38,214 @@ export function createAdapter(driver) {
         auth: driver.auth ?? missingAuth,
     };
 }
-export function createSqlAdapter(executor, provider = "postgres") {
+export function createSqlAdapter(executor, provider = "postgres", schema) {
+    if (provider === "sql")
+        throw new Error("Escolha um dialeto concreto: postgres ou mysql.");
     const dictionary = dictionaries[provider];
+    const quote = (field) => dictionary.quoteIdentifier(dictionary.columnName(field));
+    const normalize = (value) => value && typeof value === "object" ? JSON.stringify(value) : value;
+    const timestamp = () => provider === "mysql" ? new Date().toISOString().replace("T", " ").replace("Z", "") : new Date().toISOString();
     const driver = {
         provider,
         async execute(request) {
-            const { table, select = ["*"], filters, order, limit, offset, action, values } = request;
-            const columns = select.map((field) => field === "*" ? "*" : dictionary.quoteIdentifier(dictionary.columnName(field))).join(", ");
+            const table = dictionary.quoteIdentifier(request.table);
             const params = [];
-            const where = filters.map(({ field, operator, value }) => {
-                const sqlOperator = dictionary.operators[operator];
-                if (!sqlOperator)
-                    throw new Error(`Unsupported ${operator} operator for ${provider}`);
-                params.push(value);
-                return `${dictionary.quoteIdentifier(dictionary.columnName(field))} ${sqlOperator} ${dictionary.placeholders(params.length)}`;
-            });
-            let sql = `SELECT ${columns} FROM ${dictionary.quoteIdentifier(table)}`;
-            if (where.length)
-                sql += ` WHERE ${where.join(" AND ")}`;
-            if (order)
-                sql += ` ORDER BY ${dictionary.quoteIdentifier(dictionary.columnName(order.field))} ${order.ascending ? "ASC" : "DESC"}`;
-            if (limit != null) {
-                sql += ` LIMIT ${dictionary.placeholders(params.length + 1)}`;
-                params.push(limit);
-            }
-            if (offset != null) {
-                sql += ` OFFSET ${dictionary.placeholders(params.length + 1)}`;
-                params.push(offset);
-            }
-            if (action === "insert" || action === "update" || action === "delete") {
-                const data = (values ?? {});
-                if (action === "insert") {
-                    const items = Array.isArray(values) ? values : [data];
-                    const inserted = [];
-                    for (const item of items) {
-                        const keys = Object.keys(item);
-                        const insertValues = keys.map((key) => item[key]);
-                        const start = params.length;
-                        const insertSql = `INSERT INTO ${dictionary.quoteIdentifier(table)} (${keys.map((key) => dictionary.quoteIdentifier(dictionary.columnName(key))).join(", ")}) VALUES (${keys.map((_, index) => dictionary.placeholders(start + index + 1)).join(", ")})`;
-                        const result = await executor.query(insertSql, insertValues);
-                        inserted.push(...result.rows);
-                    }
-                    return { rows: inserted };
+            const bind = (value) => { params.push(normalize(value)); return dictionary.placeholders(params.length); };
+            const conditions = () => request.filters.map(({ field, operator, value }) => {
+                const column = quote(field);
+                if (operator === "$in") {
+                    if (!Array.isArray(value))
+                        throw new Error("$in exige uma lista.");
+                    return value.length ? column + " IN (" + value.map(bind).join(", ") + ")" : "1 = 0";
                 }
-                if (action === "update") {
-                    const keys = Object.keys(data);
-                    const updateParams = [...keys.map((key) => data[key]), ...filters.map((filter) => filter.value)];
-                    const updateWhere = filters.map((filter, index) => `${dictionary.quoteIdentifier(dictionary.columnName(filter.field))} ${dictionary.operators[filter.operator]} ${dictionary.placeholders(keys.length + index + 1)}`);
-                    const updateSql = `UPDATE ${dictionary.quoteIdentifier(table)} SET ${keys.map((key, index) => `${dictionary.quoteIdentifier(dictionary.columnName(key))} = ${dictionary.placeholders(index + 1)}`).join(", ")}${updateWhere.length ? ` WHERE ${updateWhere.join(" AND ")}` : ""}`;
-                    const result = await executor.query(updateSql, updateParams);
-                    return { rows: result.rows };
-                }
-                const deleteParams = filters.map((filter) => filter.value);
-                const deleteWhere = filters.map((filter, index) => `${dictionary.quoteIdentifier(dictionary.columnName(filter.field))} ${dictionary.operators[filter.operator]} ${dictionary.placeholders(index + 1)}`);
-                const deleteSql = `DELETE FROM ${dictionary.quoteIdentifier(table)}${deleteWhere.length ? ` WHERE ${deleteWhere.join(" AND ")}` : ""}`;
-                const result = await executor.query(deleteSql, deleteParams);
-                return { rows: result.rows };
-            }
-            const result = await executor.query(sql, params);
-            return { rows: result.rows };
-        },
-    };
-    return createAdapter(driver);
-}
-export function createFirebaseAdapter(firestore, auth) {
-    const driver = {
-        provider: "firebase",
-        async execute(request) {
-            const { table, select, filters, order, limit, offset, action, values } = request;
-            let reference = firestore.collection(table);
-            if (action === "select") {
-                for (const filter of filters)
-                    reference = reference.where(filter.field, dictionaries.firebase.operators[filter.operator], filter.value);
-                if (order)
-                    reference = reference.orderBy(order.field, order.ascending ? "asc" : "desc");
-                if (offset)
-                    reference = reference.offset(offset);
+                if (value === null && ["$eq", "$is", "$neq"].includes(operator))
+                    return column + (operator === "$neq" ? " IS NOT NULL" : " IS NULL");
+                if (operator === "$is" && typeof value !== "boolean")
+                    throw new Error("$is aceita null ou boolean.");
+                if (operator === "$ilike")
+                    return provider === "mysql" ? "LOWER(" + column + ") LIKE LOWER(" + bind(value) + ")" : column + " ILIKE " + bind(value);
+                const op = dictionary.operators[operator];
+                if (!op)
+                    throw new Error("Operador não suportado: " + operator);
+                return column + " " + (operator === "$is" ? "=" : op) + " " + bind(value);
+            }).join(" AND ");
+            const projection = (request.select || ["*"]).map(field => field === "*" ? "*" : quote(field)).join(", ");
+            const pagination = (value) => {
+                if (value != null && (!Number.isSafeInteger(value) || value < 0))
+                    throw new Error("Paginação deve ser um inteiro não negativo.");
+                return value;
+            };
+            if (request.action === "select") {
+                const where = conditions();
+                let sql = "SELECT " + projection + " FROM " + table + (where ? " WHERE " + where : "");
+                if (request.order)
+                    sql += " ORDER BY " + quote(request.order.field) + (request.order.ascending ? " ASC" : " DESC");
+                const limit = pagination(request.limit), offset = pagination(request.offset);
                 if (limit != null)
-                    reference = reference.limit(limit);
-                const snapshot = await reference.get();
-                return { rows: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) };
+                    sql += " LIMIT " + bind(limit);
+                else if (offset != null && provider === "mysql")
+                    sql += " LIMIT 18446744073709551615";
+                if (offset != null)
+                    sql += " OFFSET " + bind(offset);
+                return executor.query(sql, params);
             }
-            if (action === "insert") {
-                const items = Array.isArray(values) ? values : [values];
-                const rows = [];
-                for (const item of items) {
-                    const ref = await reference.add(item);
-                    rows.push({ id: ref.id, ...item });
-                }
-                return { rows };
+            if (request.action === "insert") {
+                const values = Array.isArray(request.values) ? request.values : [request.values];
+                if (!values.length)
+                    return { rows: [] };
+                const insert = async (connection) => {
+                    const rows = [];
+                    for (const value of values) {
+                        if (!value || typeof value !== "object" || Array.isArray(value))
+                            throw new Error("Registro inválido.");
+                        const record = { id: crypto.randomUUID(), created_at: timestamp(), updated_at: timestamp(), ...value };
+                        const keys = Object.keys(record);
+                        const parameters = keys.map(k => normalize(record[k]));
+                        const sql = "INSERT INTO " + table + " (" + keys.map(quote).join(", ") + ") VALUES (" + keys.map((_, i) => dictionary.placeholders(i + 1)).join(", ") + ")";
+                        const result = await connection.query(sql + (provider === "postgres" ? " RETURNING " + projection : ""), parameters);
+                        if (provider === "postgres")
+                            rows.push(...result.rows);
+                        else
+                            rows.push(...(await connection.query("SELECT " + projection + " FROM " + table + " WHERE " + quote("id") + " = ?", [record.id])).rows);
+                    }
+                    return { rows };
+                };
+                if (executor.transaction)
+                    return executor.transaction(insert);
+                if (provider === "mysql" || values.length > 1)
+                    throw new Error("O executor precisa oferecer transaction para esta gravação atômica.");
+                return insert(executor);
             }
-            throw new Error(`Firebase adapter requires an explicit document id for ${action}`);
+            if (!request.filters.length)
+                throw new Error("Atualização/exclusão exige filtro explícito.");
+            let sql;
+            if (request.action === "update") {
+                const value = request.values;
+                if (!value || Array.isArray(value) || "id" in value)
+                    throw new Error("Atualização inválida; id é imutável.");
+                const record = { ...value, updated_at: timestamp() };
+                sql = "UPDATE " + table + " SET " + Object.entries(record).map(([k, v]) => quote(k) + " = " + bind(v)).join(", ");
+            }
+            else
+                sql = "DELETE FROM " + table;
+            const filterStart = params.length;
+            const where = conditions();
+            sql += " WHERE " + where;
+            if (provider === "postgres")
+                return executor.query(sql + " RETURNING " + projection, params);
+            if (!executor.transaction)
+                throw new Error("MySQL precisa de um executor com transaction para retornar registros com consistência.");
+            return executor.transaction(async (connection) => {
+                const selected = await connection.query("SELECT * FROM " + table + " WHERE " + where + " FOR UPDATE", params.slice(filterStart));
+                await connection.query(sql, params);
+                if (request.action === "delete" || !selected.rows.length)
+                    return { rows: selected.rows };
+                const ids = selected.rows.map(row => row.id);
+                return connection.query("SELECT " + projection + " FROM " + table + " WHERE " + quote("id") + " IN (" + ids.map(() => "?").join(", ") + ")", ids);
+            });
         },
     };
-    return createAdapter({ ...driver, auth });
+    return createAdapter({
+        ...driver,
+        async execute(request) {
+            const result = await driver.execute(request);
+            const definition = Object.entries(schema?.entities || {}).find(([name]) => dictionary.tableName(name) === request.table)?.[1];
+            return { rows: result.rows.map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => {
+                    const type = definition?.fields[key]?.type;
+                    if (value == null)
+                        return [key, value];
+                    if (value instanceof Date)
+                        return [key, value.toISOString()];
+                    if (type === "boolean")
+                        return [key, Boolean(value)];
+                    if (type === "json" && typeof value === "string")
+                        return [key, JSON.parse(value)];
+                    if (type === "datetime" && typeof value === "string")
+                        return [key, new Date(value.includes("T") ? value : value.replace(" ", "T") + "Z").toISOString()];
+                    return [key, value];
+                }))) };
+        },
+    });
+}
+/** Firestore compat/Admin-style client. Use authenticated client credentials for user access. */
+export function createFirebaseAdapter(firestore, auth, scoped = false) {
+    return createAdapter({
+        provider: "firebase", auth,
+        async execute(request) {
+            const collection = firestore.collection(request.table);
+            const user = scoped ? (await auth.getUser()).user : null;
+            if (scoped && !user)
+                throw new Error("Login necessário.");
+            if (request.action === "select") {
+                let reference = user ? collection.where("user_id", "==", user.id) : collection;
+                for (const filter of request.filters) {
+                    const operator = dictionaries.firebase.operators[filter.operator];
+                    if (!operator)
+                        throw new Error("Operador Firestore não suportado: " + filter.operator);
+                    reference = reference.where(filter.field, operator, filter.value);
+                }
+                if (request.order)
+                    reference = reference.orderBy(request.order.field, request.order.ascending ? "asc" : "desc");
+                if (request.limit != null && (!Number.isSafeInteger(request.limit) || request.limit < 0))
+                    throw new Error("Limite inválido.");
+                if (request.offset) {
+                    if (!reference.offset)
+                        throw new Error("Este cliente Firestore exige paginação por cursor.");
+                    reference = reference.offset(request.offset);
+                }
+                if (request.limit != null)
+                    reference = reference.limit(request.limit);
+                const snapshot = await reference.get();
+                const rows = snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
+                return { rows: rows.map((row) => !request.select || request.select.includes("*") ? row : Object.fromEntries(request.select.map(key => [key, row[key]]))) };
+            }
+            if (request.action === "insert") {
+                const values = Array.isArray(request.values) ? request.values : [request.values];
+                if (values.length > 500)
+                    throw new Error("Lote Firestore limitado a 500 documentos.");
+                return firestore.runTransaction(async (transaction) => {
+                    const records = values.map((value) => {
+                        if (!value || typeof value !== "object" || Array.isArray(value))
+                            throw new Error("Registro inválido.");
+                        const id = value.id || crypto.randomUUID();
+                        if (typeof id !== "string" || id.includes("/"))
+                            throw new Error("ID inválido.");
+                        return { ref: collection.doc(id), value: { created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...value, id, ...(user ? { user_id: user.id } : {}) } };
+                    });
+                    const ids = new Set(records.map(record => record.value.id));
+                    if (ids.size !== records.length)
+                        throw new Error("IDs duplicados no lote.");
+                    for (const record of records)
+                        if ((await transaction.get(record.ref)).exists)
+                            throw new Error("Registro já existe.");
+                    for (const record of records)
+                        transaction.set(record.ref, record.value);
+                    return { rows: records.map(record => record.value) };
+                });
+            }
+            const filter = request.filters[0];
+            if (request.filters.length !== 1 || filter.field !== "id" || filter.operator !== "$eq" || typeof filter.value !== "string" || filter.value.includes("/"))
+                throw new Error("Atualização/exclusão Firestore exige um único filtro id.");
+            const ref = collection.doc(filter.value);
+            return firestore.runTransaction(async (transaction) => {
+                const snapshot = await transaction.get(ref);
+                if (!snapshot.exists)
+                    return { rows: [] };
+                const previous = { ...snapshot.data(), id: snapshot.id };
+                if (user && previous.user_id !== user.id)
+                    throw new Error("Acesso negado.");
+                if (request.action === "delete") {
+                    transaction.delete(ref);
+                    return { rows: [previous] };
+                }
+                if (!request.values || typeof request.values !== "object" || Array.isArray(request.values) || "id" in request.values)
+                    throw new Error("Atualização inválida.");
+                const next = { ...previous, ...request.values, updated_at: new Date().toISOString(), ...(user ? { user_id: user.id } : {}) };
+                transaction.update(ref, next);
+                return { rows: [next] };
+            });
+        },
+    });
 }
 export function createSupabaseAdapter(client) {
     return client;

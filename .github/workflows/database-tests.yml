@@ -1,0 +1,43 @@
+name: Database contracts
+on: [pull_request, workflow_dispatch, workflow_call]
+permissions:
+  contents: read
+jobs:
+  database-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: moon_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: moon_ci
+          MYSQL_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -pmoon_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node --test tests/*.test.mjs
+        env:
+          MOON_TEST_POSTGRES_URL: postgres://postgres:moon_ci@localhost:5432/moon_ci
+          MOON_TEST_MYSQL_URL: mysql://root:moon_ci@localhost:3306/moon_ci
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: node tests/prepare-firestore.mjs
+      - name: Testar regras e operações Firestore
+        run: npx --yes firebase-tools@14.15.2 emulators:exec --project demo-moon --config tests/firebase.json --only firestore "node --test tests/firestore-emulator.test.mjs"

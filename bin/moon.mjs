@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, chmodSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline/promises";
@@ -46,6 +46,7 @@ function startSpinner(message) {
 }
 
 function help() {
+  print("  db [pasta]         assistente de criação e validação do banco (--plan apenas gera o plano)");
   print("Moon SDK — ferramentas locais");
   print("\nComandos:");
   print("  init [pasta]       cria uma configuração local");
@@ -205,10 +206,16 @@ function writeEnvValues(values, targetPath = envPath) {
     content = matcher.test(content) ? content.replace(matcher, line) : `${content.replace(/\s*$/, "")}\n${line}\n`;
   }
   writeFileSync(targetPath, content.replace(/^\n+/, ""));
+  if (!windows) chmodSync(targetPath, 0o600);
 }
 
 function withRuntimeAliases(provider, values) {
-  if (provider === "supabase") {
+  values = {
+    ...values,
+    ...(values.MOON_AUTH_PROVIDER ? { VITE_MOON_AUTH_PROVIDER: values.MOON_AUTH_PROVIDER } : {}),
+    ...Object.fromEntries(["API_KEY", "PROJECT_ID", "AUTH_DOMAIN", "APP_ID"].filter(key => values["MOON_FIREBASE_" + key]).map(key => ["VITE_MOON_FIREBASE_" + key, values["MOON_FIREBASE_" + key]])),
+  };
+  if (provider === "supabase" || values.MOON_AUTH_PROVIDER === "supabase") {
     return {
       ...values,
       VITE_SUPABASE_URL: values.MOON_SUPABASE_URL,
@@ -307,10 +314,10 @@ function migrateImportedProject(appDir) {
     .map((relativePath) => resolve(appDir, relativePath)).find((candidate) => existsSync(candidate));
   if (!existsSync(packagePath)) return;
   const sdkPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
-  const install = spawnSync(npmCommand, ["install", "--save", pathToFileURL(sdkPath).href, "@supabase/supabase-js"], { cwd: appDir, stdio: "inherit", shell: windows });
+  const install = spawnSync(npmCommand, ["install", "--save", pathToFileURL(sdkPath).href], { cwd: appDir, stdio: "inherit", shell: windows });
   if (install.status !== 0) throw new Error("não foi possível instalar o Moon no projeto importado");
   const activeConfig = readConfig();
-  writeEnvValues(withRuntimeAliases(activeConfig.provider, { ...readEnvValues(activeConfig.env || []), VITE_MOON_DEV_AUTH_BYPASS: "true" }), resolve(appDir, ".env.local"));
+  writeEnvValues(withRuntimeAliases(activeConfig.provider, { ...readEnvValues(activeConfig.env || []), VITE_MOON_DEV_AUTH_BYPASS: activeConfig.provider === "none" ? "true" : "false" }), resolve(appDir, ".env.local"));
   const viteConfigPath = ["vite.config.js", "vite.config.mjs", "vite.config.ts"]
     .map((relativePath) => resolve(appDir, relativePath)).find((candidate) => existsSync(candidate));
   if (viteConfigPath && (!readFileSync(viteConfigPath, "utf8").includes("alias: { \"@\":") || readFileSync(viteConfigPath, "utf8").includes("@base44/vite-plugin") || !readFileSync(viteConfigPath, "utf8").includes("127.0.0.1:8787"))) {
@@ -329,31 +336,27 @@ export default defineConfig({
   }
   if (!clientPath) return;
   const source = readFileSync(clientPath, "utf8");
-  if (!source.includes("@base44/sdk") && !source.includes("Configure a API de IA") && !source.includes("base44.app")) return;
-  writeFileSync(clientPath, `import { createClient as createMoonClient, createMemoryAdapter } from "@moon/sdk";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+  if (!source.includes("@base44/sdk") && !source.includes("Configure a API de IA") && !source.includes("base44.app") && !source.includes("createMemoryAdapter") && !source.includes("createBrowserClient")) return;
+  const backupPath = clientPath + ".before-moon";
+  if (!existsSync(backupPath)) writeFileSync(backupPath, source);
+  writeFileSync(clientPath, `import { createBrowserClient } from "@moon/sdk";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabase = supabaseUrl ? createSupabaseClient(supabaseUrl, import.meta.env.VITE_SUPABASE_ANON_KEY || "") : null;
-const devAuthBypass = import.meta.env.VITE_MOON_DEV_AUTH_BYPASS === "true" && import.meta.env.MODE !== "production";
-const localUserKey = "moon-dev-user";
-const localUser = () => { try { return JSON.parse(localStorage.getItem(localUserKey) || "null"); } catch { return null; } };
-const localSession = () => { const user = localUser(); return user ? { user, access_token: "moon-dev-session" } : null; };
+const sdk = createBrowserClient({
+  provider: import.meta.env.VITE_MOON_PROVIDER || "supabase",
+  authProvider: import.meta.env.VITE_MOON_AUTH_PROVIDER || undefined,
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+  supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+  firebase: {
+    apiKey: import.meta.env.VITE_MOON_FIREBASE_API_KEY,
+    projectId: import.meta.env.VITE_MOON_FIREBASE_PROJECT_ID,
+    authDomain: import.meta.env.VITE_MOON_FIREBASE_AUTH_DOMAIN,
+    appId: import.meta.env.VITE_MOON_FIREBASE_APP_ID,
+  },
+});
 const auth = {
-  async getSession() { if (devAuthBypass) return { session: localSession() }; const { data, error } = await supabase.auth.getSession(); if (error) throw error; return { session: data.session }; },
-  async getUser() { if (devAuthBypass) return { user: localUser() }; const { data, error } = await supabase.auth.getUser(); if (error && error.name !== "AuthSessionMissingError") throw error; return { user: data.user }; },
-  async signInWithPassword(credentials) { if (devAuthBypass) { const user = { id: "dev-" + encodeURIComponent(credentials.email), email: credentials.email }; localStorage.setItem(localUserKey, JSON.stringify(user)); return { user, session: localSession() }; } const { data, error } = await supabase.auth.signInWithPassword(credentials); if (error) throw error; return data; },
-  async signUp(credentials) { if (devAuthBypass) { const user = { id: "dev-" + encodeURIComponent(credentials.email), email: credentials.email }; localStorage.setItem(localUserKey, JSON.stringify(user)); return { user, session: localSession() }; } const { data, error } = await supabase.auth.signUp({ ...credentials, options: { ...(credentials.options || {}), emailRedirectTo: window.location.origin + "/login" } }); if (error) throw error; return data; },
-  async signOut() { if (devAuthBypass) { localStorage.removeItem(localUserKey); return; } const { error } = await supabase.auth.signOut(); if (error) throw error; },
-  async updateUser(attributes) { const { data, error } = await supabase.auth.updateUser(attributes); if (error) throw error; return { user: data.user }; },
-  async resetPasswordForEmail(email, options) { const { error } = await supabase.auth.resetPasswordForEmail(email, options); if (error) throw error; },
-  async signInWithOAuth(options) { const { error } = await supabase.auth.signInWithOAuth(options); if (error) throw error; },
-  async verifyOtp(params) { if (devAuthBypass) return { user: localUser(), session: localSession() }; const { data, error } = await supabase.auth.verifyOtp({ email: params.email, token: params.otpCode || params.token, type: params.type || "signup" }); if (error) throw error; return data; },
-  async resend(params) { if (devAuthBypass) return; const { error } = await supabase.auth.resend({ email: params.email, type: params.type || "signup" }); if (error) throw error; },
-  onAuthStateChange(callback) { const { data } = supabase.auth.onAuthStateChange((event, session) => callback({ event, session })); return data.subscription; },
+  verifyOtp: params => sdk.auth.verifyOtp({ ...params, token: params.otpCode || params.token }),
+  resend: params => sdk.auth.resendOtp(params),
 };
-const database = devAuthBypass ? createMemoryAdapter(localStorage) : supabase;
-const sdk = createMoonClient({ from: (table) => database.from(table), auth });
 export const base44 = {
   auth: {
     me: () => sdk.auth.me(), isAuthenticated: () => sdk.auth.isAuthenticated(),
@@ -391,182 +394,49 @@ function readEnvValues(keys) {
   }));
 }
 
-function findProjectSchema(provider = "supabase") {
-  const candidates = provider === "supabase"
-    ? ["supabase/schema.sql", "moon/schema.supabase.sql", "schema.sql"]
-    : [`moon/schema.${provider}.sql`, "moon/schema.sql"];
-  for (const relativePath of candidates) {
-    const path = resolve(projectDir, relativePath);
-    if (existsSync(path)) return path;
-  }
-  return null;
-}
-
-function inferProjectSchema(provider = "postgres") {
-  const ignored = new Set(["node_modules", "dist", ".git", ".next", "build"]);
-  const entities = new Map();
-  const visit = (directoryPath) => {
-    for (const entry of readdirSync(directoryPath)) {
-      if (ignored.has(entry)) continue;
-      const fullPath = resolve(directoryPath, entry);
-      const info = statSync(fullPath);
-      if (info.isDirectory()) { visit(fullPath); continue; }
-      if (!info.isFile() || !/\.(js|jsx|ts|tsx|mjs)$/.test(entry)) continue;
-      const source = readFileSync(fullPath, "utf8");
-      const entityPattern = /entities\.([A-Za-z0-9_]+)\.(?:create|update)\s*\(([\s\S]*?)\)/g;
-      for (const match of source.matchAll(entityPattern)) {
-        const table = match[1].replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
-        const fields = entities.get(table) || new Set();
-        for (const field of match[2].matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*:/g)) fields.add(field[1]);
-        entities.set(table, fields);
-      }
+async function setupDatabase() {
+  const { databaseWizard } = await import("./database-wizard.mjs");
+  const rl = createInterface({ input, output });
+  const lines = !input.isTTY ? readFileSync(0, "utf8").split(/\r?\n/) : null;
+  let index = 0;
+  const ask = async (label) => {
+    if (lines) {
+      if (index >= lines.length) throw new Error("Respostas insuficientes. Rode moon db em um terminal interativo.");
+      return lines[index++];
     }
+    return rl.question(label + ": ");
   };
-  try { visit(projectDir); } catch { return ""; }
-  if (!entities.size) return "";
-
-  const usesAuth = projectUsesAuth();
-  const sql = [
-    "-- Schema gerado automaticamente pelo Moon a partir do código do projeto.",
-    ...(provider === "postgres" || provider === "supabase" ? ["create extension if not exists pgcrypto;"] : []),
-    "",
-  ];
-  for (const [table, fields] of entities) {
-    fields.add("id");
-    if (usesAuth) fields.add("user_id");
-    fields.add("created_at");
-    fields.add("updated_at");
-    const columns = [...fields].map((field) => {
-      const safe = field.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
-      if (safe === "id") return provider === "mysql" ? "  id char(36) primary key" : "  id uuid primary key default gen_random_uuid()";
-      if (safe === "user_id") return provider === "supabase" || provider === "postgres" ? "  user_id uuid not null references auth.users(id) on delete cascade" : "  user_id varchar(255) not null";
-      if (["created_at", "updated_at"].includes(safe)) return `  ${safe} ${provider === "mysql" ? "timestamp" : "timestamptz"} not null default current_timestamp`;
-      if (/^(is_|has_|can_|should_|pinned|active|enabled|completed|done)/.test(safe)) return `  ${safe} boolean not null default false`;
-      return `  ${safe} text`;
+  try {
+    return await databaseWizard({
+      directory: projectDir, ask, secret: label => askSecret(ask, label),
+      config: readConfig() || {}, env: readProjectEnv(), print,
+      planOnly: process.argv.includes("--plan"),
+      saveEnv: values => writeEnvValues(withRuntimeAliases(values.MOON_SUPABASE_URL ? "supabase" : "", values)),
+      saveConfig: config => writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n"),
     });
-    const qualifiedTable = provider === "supabase" || provider === "postgres" ? `public.${table}` : table;
-    sql.push(`create table if not exists ${qualifiedTable} (\n${columns.join(",\n")}\n);`);
-    if (usesAuth && (provider === "supabase" || provider === "postgres")) {
-      sql.push(`alter table public.${table} enable row level security;`);
-      sql.push(`drop policy if exists "Moon users own ${table}" on public.${table};`);
-      sql.push(`create policy "Moon users own ${table}" on public.${table} for all using (auth.uid() = user_id) with check (auth.uid() = user_id);`);
-    }
-    sql.push("");
-  }
-  return `${sql.join("\n")}\n`.replace(/gen_random_uuid\(\)/g, provider === "mysql" ? "(UUID())" : "gen_random_uuid()");
-}
-
-function projectUsesAuth() {
-  const ignored = new Set(["node_modules", "dist", ".git", ".next", "build"]);
-  const visit = (directoryPath) => {
-    for (const entry of readdirSync(directoryPath)) {
-      if (ignored.has(entry)) continue;
-      const fullPath = resolve(directoryPath, entry);
-      const info = statSync(fullPath);
-      if (info.isDirectory() && visit(fullPath)) return true;
-      if (info.isFile() && /\.(js|jsx|ts|tsx|mjs)$/.test(entry) && /\b(auth|entities\.)/i.test(readFileSync(fullPath, "utf8"))) return true;
-    }
-    return false;
-  };
-  try { return visit(projectDir); } catch { return false; }
-}
-
-function ensureProjectSchema(provider = "supabase") {
-  const existing = findProjectSchema(provider);
-  if (existing) return existing;
-  if (provider === "firebase") {
-    const path = resolve(projectDir, "moon/firestore.rules");
-    const folder = resolve(projectDir, "moon");
-    if (!existsSync(folder)) mkdirSync(folder, { recursive: true });
-    writeFileSync(path, `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{collection}/{document} {\n      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;\n      allow read, update, delete: if request.auth != null && resource.data.user_id == request.auth.uid;\n    }\n  }\n}\n`);
-    print(`✓ Regras do Firebase geradas automaticamente em ${path}`);
-    return path;
-  }
-  const generated = inferProjectSchema(provider === "supabase" ? "supabase" : provider);
-  if (!generated) return null;
-  const path = resolve(projectDir, `moon/schema.${provider}.sql`);
-  const folder = resolve(projectDir, "moon");
-  if (!existsSync(folder)) mkdirSync(folder, { recursive: true });
-  writeFileSync(path, generated);
-  print(`✓ Schema gerado automaticamente em ${path}`);
-  return path;
+  } finally { rl.close(); }
 }
 
 async function provisionDatabase(provider) {
   if (provider === "none") return true;
-  const schemaPath = ensureProjectSchema(provider);
-  if (!schemaPath) {
-    print("ℹ Nenhuma entidade foi encontrada para gerar estrutura de banco.");
-    return true;
-  }
+  const { discoverSchema } = await import("./database-schema.mjs");
+  const schema = discoverSchema(projectDir)?.schema;
+  if (!schema) throw new Error("Schema comum ausente. Execute moon db . para definir campos e criar a estrutura.");
   if (provider === "firebase") {
-    print("✓ Firebase não exige schema de tabelas; as coleções são criadas no primeiro uso.");
-    print(`  Regras geradas em ${schemaPath}; publique-as com a CLI do Firebase quando desejar.`);
+    const reportPath = resolve(projectDir, "moon/database-report.json");
+    if (!existsSync(reportPath)) throw new Error("Execute moon db . para publicar as regras e verificar o Firestore.");
     return true;
   }
-  if (!["supabase", "postgres", "mysql"].includes(provider)) {
-    print(`✓ Estrutura gerada em ${schemaPath}; SQL genérico requer aplicação pelo driver configurado.`);
-    return true;
-  }
-
-  const envValues = readProjectEnv();
-  const existingDbUrl = envValues.MOON_DATABASE_URL || envValues.SUPABASE_DB_URL;
-  if (!existingDbUrl) {
-    print(`✓ Schema encontrado: ${schemaPath}`);
-    print(`ℹ ${provider} precisa de uma connection string administrativa para criar a estrutura.`);
-    print("  A URL pública + chave anon continuam sendo suficientes para o uso normal do app.");
-    print("  Para aplicar automaticamente depois, salve MOON_DATABASE_URL no .env.local e rode moon run novamente.");
-    return true;
-  }
-
-  if (provider === "supabase" || provider === "postgres") {
-    try {
-      const { Client } = await import("pg");
-      const client = new Client({ connectionString: existingDbUrl, connectionTimeoutMillis: 10000 });
-      await client.connect();
-      const schema = readFileSync(schemaPath, "utf8");
-      const idempotentSchema = schema.replace(/create policy\s+"([^"]+)"\s+on\s+([^\s(]+)[^;]*;/gi, (statement, name, table) => `drop policy if exists "${name}" on ${table};\n${statement}`);
-      await client.query(idempotentSchema);
-      await client.end();
-      print("✓ Banco preparado automaticamente a partir do schema do projeto");
-      return true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      print(`✗ Falha ao aplicar o schema do projeto: ${message}`);
-      return false;
-    }
-  }
-  const executable = "mysql";
-  const args = [existingDbUrl, "--batch"];
-  const psql = spawnSync(executable, args, { input: readFileSync(schemaPath, "utf8"), encoding: "utf8" });
-  if (psql.error?.code === "ENOENT") {
-    print(`✗ A estrutura não foi aplicada: o comando ${executable} não está instalado.`);
-    print(`  Instale o cliente de ${provider} e rode moon run novamente.`);
-    return false;
-  }
-  if (psql.status !== 0) {
-    print(`✗ Falha ao aplicar o schema do projeto${psql.stderr ? `: ${psql.stderr.trim()}` : "."}`);
-    return false;
-  }
-  print("✓ Banco preparado automaticamente a partir do schema do projeto");
-  return true;
-}
-
-async function configureSchemaAccess(provider) {
-  if (!["supabase", "postgres", "mysql"].includes(provider) || !ensureProjectSchema(provider) || !input.isTTY || !output.isTTY) return;
-  const values = readProjectEnv();
-  const existingDbUrl = values.MOON_DATABASE_URL || values.SUPABASE_DB_URL;
-  if (existingDbUrl && !/[\\[\]]/.test(existingDbUrl)) return;
-  const rl = createInterface({ input, output });
-  const askLine = (label) => rl.question(`${label}: `);
+  const { connectSql, applySqlSchema } = await import("./database-sql.mjs");
+  const env = readProjectEnv();
+  const url = env.MOON_DATABASE_URL || env.SUPABASE_DB_URL;
+  if (!url) throw new Error("Credencial administrativa ausente. Execute moon db .");
+  const connection = await connectSql(provider, url);
   try {
-    const answer = (await askLine("Preparar tabelas e políticas automaticamente agora? (s/N)")).trim().toLowerCase();
-    if (!["s", "sim", "y", "yes"].includes(answer)) return;
-    const dbUrl = (await askSecret(askLine, "Connection string administrativa do Supabase")).trim();
-    if (!dbUrl) return;
-    writeEnvValues({ MOON_DATABASE_URL: dbUrl });
-    print("✓ Credencial administrativa salva somente no .env.local");
-  } finally { rl.close(); }
+    const report = await applySqlSchema(connection, provider, schema);
+    writeFileSync(resolve(projectDir, "moon/database-report.json"), JSON.stringify(report, null, 2) + "\n");
+    return true;
+  } finally { await connection.close(); }
 }
 
 function loadEnvFile() {
@@ -600,7 +470,7 @@ async function testConnection(provider, values) {
   const selected = providers.find((item) => item.id === provider);
   if (provider === "none") return { ok: true, message: "nenhum banco configurado; o projeto será executado localmente" };
   if (!selected) return { ok: false, message: "banco não reconhecido na configuração" };
-  const missing = selected.fields.filter(([key]) => !values[key]).map(([key]) => key);
+  const missing = selected.fields.filter(([key]) => provider === "firebase" ? ["MOON_FIREBASE_API_KEY", "MOON_FIREBASE_PROJECT_ID"].includes(key) : true).filter(([key]) => !values[key]).map(([key]) => key);
   if (missing.length) return { ok: false, message: `variáveis ausentes: ${missing.join(", ")}` };
 
   if (provider === "supabase") {
@@ -618,24 +488,19 @@ async function testConnection(provider, values) {
   }
 
   if (provider === "firebase") {
-    const response = await fetch(`https://firebase.googleapis.com/v1beta/projects/${values.MOON_FIREBASE_PROJECT_ID}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    return response.ok
-      ? { ok: true, message: "projeto Firebase encontrado (credenciais do SDK serão validadas ao inicializar o app)" }
-      : { ok: false, message: `Firebase respondeu HTTP ${response.status}` };
+    const reportPath = resolve(projectDir, "moon/database-report.json");
+    if (!existsSync(reportPath)) return { ok: false, message: "Execute moon db . para criar/verificar o Firestore." };
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+    const { discoverSchema, schemaHash } = await import("./database-schema.mjs");
+    const schema = discoverSchema(projectDir)?.schema;
+    return { ok: Boolean(schema && report.provider === "firebase" && report.schemaHash === schemaHash(schema)), message: "Verificação administrativa registrada; o login será validado no aplicativo." };
   }
 
-  const raw = values.MOON_DATABASE_URL;
-  const parsed = new URL(raw.replace(/^sql:\/\//, "tcp://"));
-  const port = Number(parsed.port || (provider === "postgres" ? 5432 : provider === "mysql" ? 3306 : 1433));
-  return new Promise((resolve) => {
-    const socket = createConnection({ host: parsed.hostname, port, timeout: 8000 });
-    const finish = (result) => { socket.destroy(); resolve(result); };
-    socket.once("connect", () => finish({ ok: true, message: `host alcançável em ${parsed.hostname}:${port} (autenticação será validada pelo driver do backend)` }));
-    socket.once("timeout", () => finish({ ok: false, message: `tempo esgotado ao conectar em ${parsed.hostname}:${port}` }));
-    socket.once("error", (error) => finish({ ok: false, message: `${error.code || "erro de rede"} em ${parsed.hostname}:${port}` }));
-  });
+  if (provider === "sql") return { ok: false, message: "Execute moon db . e escolha um dialeto concreto." };
+  const { connectSql } = await import("./database-sql.mjs");
+  const connection = await connectSql(provider, values.MOON_DATABASE_URL);
+  try { await connection.query("SELECT 1"); return { ok: true, message: "Autenticação SQL e consulta reais verificadas" }; }
+  finally { await connection.close(); }
 }
 
 async function testConfigured() {
@@ -705,7 +570,7 @@ async function configure({ startAfter = false } = {}) {
       const result = await testConnection(provider, values);
       print(`${result.ok ? "✓" : "✗"} ${result.message}`);
       if (!result.ok) process.exitCode = 1;
-      else print("O projeto está pronto para usar este banco.");
+      else print("Conexão verificada. Execute moon db . para criar e validar a estrutura.");
     } catch (error) {
       print(`✗ ${error instanceof Error ? error.message : String(error)}`);
       process.exitCode = 1;
@@ -784,6 +649,10 @@ else if (command === "init" || command === "config" || command === "link") await
 else if (command === "login") importFromPlatform(["login"]);
 else if (command === "eject") importFromPlatform(["eject"]);
 else if (command === "doctor") doctor();
+else if (command === "db") {
+  try { await setupDatabase(); }
+  catch (error) { print("Falha ao preparar o banco: " + error.message); process.exitCode = 1; }
+}
 else if (command === "test") await testConfigured();
 else if (command === "build") npm("build", resolve(fileURLToPath(new URL(".", import.meta.url)), ".."));
 else if (command === "dev") npm("dev");
@@ -807,10 +676,8 @@ else if (command === "run") {
     else print("✓ Nenhum recurso de IA detectado; configuração de IA ignorada");
     runLocalProcesses();
   } else {
-  if (!readConfig()) {
-    const detected = detectDatabase();
-    if (detected) adoptDetectedDatabase(detected);
-    else await configure({ startAfter: false });
+  if (!readConfig() || readConfig().provider !== "none" && !existsSync(resolve(projectDir, "moon/database-report.json"))) {
+    await setupDatabase();
   }
   let connected = await testConfigured();
   if (!connected && input.isTTY && output.isTTY) {
@@ -820,10 +687,8 @@ else if (command === "run") {
   }
   if (connected) {
     const activeConfig = readConfig();
-    writeEnvValues(withRuntimeAliases(activeConfig.provider, { ...readEnvValues(activeConfig.env || []), VITE_MOON_PROVIDER: activeConfig.provider, VITE_MOON_DEV_AUTH_BYPASS: "true" }));
+    writeEnvValues(withRuntimeAliases(activeConfig.provider, { ...readEnvValues(activeConfig.env || []), VITE_MOON_PROVIDER: activeConfig.provider, VITE_MOON_DEV_AUTH_BYPASS: activeConfig.provider === "none" ? "true" : "false" }));
     loadEnvFile();
-    ensureProjectSchema(readConfig().provider);
-    await configureSchemaAccess(readConfig().provider);
     if (!(await provisionDatabase(readConfig().provider))) process.exitCode = 1;
     else {
     const aiRequired = projectUsesAi();
