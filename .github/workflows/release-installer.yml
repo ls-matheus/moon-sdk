@@ -16,6 +16,10 @@ permissions:
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'latest' }}
 
+concurrency:
+  group: release-installers-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   database-contracts:
     uses: ./.github/workflows/database-tests.yml
@@ -32,7 +36,7 @@ jobs:
         run: |
           $iscc = Get-ChildItem -Path 'C:\Program Files (x86)', 'C:\Program Files' -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $iscc) { throw 'ISCC.exe não foi encontrado.' }
-          & $iscc.FullName installer\install.iss
+          & $iscc.FullName "/DMoonCommit=${{ github.sha }}" installer\install.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path install.exe)) { throw 'O instalador não foi gerado.' }
       - name: Publicar install.exe

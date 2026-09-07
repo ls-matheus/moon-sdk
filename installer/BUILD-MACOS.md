@@ -6,7 +6,7 @@ sem depender de uma publicação de @moon/sdk no npm.
 
 O usuário abre o pacote no Installer e autoriza a instalação. Não é necessário
 ter Node.js previamente. O pacote é pequeno e baixa do GitHub Releases o Node.js
-22 da arquitetura do Mac e o Moon com todas as dependências prontas, além do Base44.
+22.23.2 da arquitetura do Mac e o Moon com todas as dependências prontas, além do Base44.
 É necessário acesso à internet durante a instalação; não há npm install no Mac.
 As dependências do Moon são preparadas com package-lock.json no build.
 Cada download é validado pelo SHA-256 gravado dentro do instalador.

@@ -29,8 +29,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts
-      - run: npm run build
-      - run: node --test tests/*.test.mjs
+      - run: npm run audit
+      - run: npm run check
         env:
           MOON_TEST_POSTGRES_URL: postgres://postgres:moon_ci@localhost:5432/moon_ci
           MOON_TEST_MYSQL_URL: mysql://root:moon_ci@localhost:3306/moon_ci

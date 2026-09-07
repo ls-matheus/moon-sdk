@@ -2,7 +2,7 @@
 
 O instalador visual é definido em `install.iss`. Para gerar o executável em um Windows, abra o arquivo no Inno Setup e compile.
 
-O `install.exe` não embute uma cópia do SDK: durante a instalação ele baixa a branch `main` diretamente de `https://github.com/ls-matheus/moon-sdk`, extrai os arquivos e instala a versão atual publicada no repositório. O computador precisa estar conectado à internet.
+O `install.exe` gerado pelo workflow embute o commit exato que disparou o build. Durante a instalação, ele baixa o arquivo ZIP desse commit em `https://github.com/ls-matheus/moon-sdk`, extrai os arquivos e instala a mesma versão validada pelo CI. Builds manuais usam `main` como fallback. O computador precisa estar conectado à internet.
 
 O workflow `release-installer.yml` recompila o instalador em todo push para `main` e atualiza a release `latest`, substituindo o `install.exe` anterior. Uma execução manual permite criar uma release com uma tag própria, como `v1.0.0`.
 

@@ -17,7 +17,9 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test tests/*.test.mjs"
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "check": "npm run typecheck && npm test",
+    "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",

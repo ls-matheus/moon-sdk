@@ -54,9 +54,17 @@ moon start ./meu-app
 moon run ./meu-app
 ```
 
+Para validar o próprio SDK antes de publicar, use `npm run check` e
+`npm run audit`. O primeiro executa typecheck, build e a suíte de testes; o
+segundo bloqueia vulnerabilidades altas ou críticas nas dependências travadas.
+
 O comando `link` pergunta o banco, grava `moon.config.json`, as variáveis específicas em `.env.local` e testa a conexão antes de concluir. `test` repete a verificação sem reconfigurar. `start` executa a preparação e inicia o app local. A CLI não possui fluxo de conta, publicação, exportação ou conexão com uma plataforma externa.
 
 `run` é o comando universal: detecta banco por arquivos `.env`, dependências e código do projeto; reutiliza a configuração encontrada ou chama `link` quando não houver banco. Também analisa o código para detectar chatbot/LLM e só pergunta pela API de IA quando encontra esse recurso. Depois sobe o backend local em `http://localhost:8787` junto com o frontend definido no `package.json`. A chave de IA fica em `.env.local` e o backend só informa se ela existe; nunca entrega o segredo por uma rota HTTP.
+
+Os instaladores são gerados a partir de commits imutáveis: o `install.exe`
+embute o commit que disparou o build e o pacote macOS usa Node.js 22.23.2,
+com hashes verificados.
 
 O wizard é específico para cada opção: Supabase solicita URL e chave pública e valida uma chamada autenticada; Firebase solicita o Web App config e valida o projeto; PostgreSQL, MySQL e SQL solicitam uma connection string e validam host/porta, sendo marcados como backend-only. Segredos ficam somente no `.env.local` e nunca são gravados no JSON.
 # Configurar o banco pelo terminal
