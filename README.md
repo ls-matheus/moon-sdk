@@ -69,3 +69,13 @@ Quando o código não permite identificar a estrutura com segurança, interrompe
 de alterar o banco e informa o ponto que precisa de revisão técnica.
 Depois execute `moon run .`. Para gerar apenas o plano, use `moon db . --plan`.
 Veja [DATABASES.md](DATABASES.md) para bancos suportados, credenciais e limites de migração/autenticação.
+
+## Editar no Base44 e localmente
+
+`moon sync init` gera o contrato por projeto; `moon sync push/pull` sincroniza os
+commits pela `main`, bloqueando alterações nos arquivos protegidos, históricos
+divergentes e arquivos sensíveis. O proprietário precisa ativar previamente a
+integração bidirecional Base44/GitHub. O código compartilhado mantém o cliente
+Base44; `moon run` adapta uma cópia local ignorada pelo Git. Registros dos bancos
+não são sincronizados. Veja [SYNC.md](SYNC.md) para configuração, comandos,
+migrações aditivas e limites de proteção.

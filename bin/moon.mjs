@@ -9,7 +9,9 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
 
 const command = process.argv[2] || "help";
-const projectDir = resolve(process.argv[3] || ".");
+const subcommand = command === "sync" || command === "db" && ["diff", "migrate"].includes(process.argv[3]) ? process.argv[3] : null;
+const directoryArg = process.argv[subcommand ? 4 : 3];
+const projectDir = resolve(directoryArg && !directoryArg.startsWith("--") ? directoryArg : ".");
 const noDatabase = process.argv.includes("--no-db") || process.argv.includes("--visual");
 const configPath = resolve(projectDir, "moon.config.json");
 const envPath = resolve(projectDir, ".env.local");
@@ -49,6 +51,8 @@ function help() {
   print("  db [pasta]         assistente de criação e validação do banco (--plan apenas gera o plano)");
   print("Moon SDK — ferramentas locais");
   print("\nComandos:");
+  print("  sync init|status|push|pull [pasta]  sincronização protegida com GitHub/main");
+  print("  db diff|migrate [pasta]  revisão de schema proposto (--apply para aplicar migração suportada)");
   print("  init [pasta]       cria uma configuração local");
   print("  login [pasta]      autentica a conta de importação");
   print("  eject [pasta]      importa um projeto para a pasta escolhida");
@@ -109,7 +113,7 @@ function detectDatabase() {
 
 function projectUsesDatabase(directory) {
   const result = { supabase: false, firebase: false, sql: false };
-  const ignored = new Set(["node_modules", "dist", ".git", ".next", "build"]);
+  const ignored = new Set(["node_modules", "dist", ".git", ".moon", ".next", "build"]);
   const visit = (current) => {
     for (const entry of readdirSync(current)) {
       if (ignored.has(entry)) continue;
@@ -261,10 +265,15 @@ async function configureAi() {
   } finally { rl.close(); }
 }
 
-function runLocalProcesses() {
+async function runLocalProcesses() {
   const serverPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "local-server.mjs");
-  const frontendDir = findRunnableProject(projectDir);
-  if (frontendDir) migrateImportedProject(frontendDir);
+  let frontendDir = findRunnableProject(projectDir);
+  if (frontendDir) {
+    const { prepareLocalRuntime } = await import("./local-runtime.mjs");
+    frontendDir = prepareLocalRuntime(frontendDir);
+    print("Preparando cópia de execução local; os arquivos compartilhados com Base44 serão preservados.");
+    migrateImportedProject(frontendDir);
+  }
   const backend = spawn(process.execPath, [serverPath], { cwd: projectDir, stdio: "inherit", env: process.env });
   const frontend = frontendDir ? spawn(npmCommand, ["run", "dev"], { cwd: frontendDir, stdio: "inherit", env: process.env, shell: windows }) : null;
   const stop = () => {
@@ -303,7 +312,7 @@ function findRunnableProject(directory) {
   if (hasDevScript(directory)) return directory;
   try {
     for (const entry of readdirSync(directory)) {
-      if (["node_modules", "dist", ".git"].includes(entry)) continue;
+      if (["node_modules", "dist", ".git", ".moon"].includes(entry)) continue;
       const candidate = resolve(directory, entry);
       if (statSync(candidate).isDirectory() && hasDevScript(candidate)) return candidate;
     }
@@ -452,7 +461,7 @@ function loadEnvFile() {
 
 function projectUsesAi(directory = projectDir) {
   const markers = ["invokellm", "aigateway", "createopenai", "openai", "anthropic", "gemini", "generatetext", "generateobject", "streamtext", "chatbot", "assistant", "agent"];
-  const ignored = new Set(["node_modules", "dist", ".git", ".next", "build"]);
+  const ignored = new Set(["node_modules", "dist", ".git", ".moon", ".next", "build"]);
   const extensions = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".json", ".jsonc"]);
   const visit = (directoryPath) => {
     for (const entry of readdirSync(directoryPath)) {
@@ -643,7 +652,8 @@ function isMoonSdkDirectory() {
   try { return JSON.parse(readFileSync(packagePath, "utf8")).name === "@moon/sdk"; } catch { return false; }
 }
 
-if (["run", "start", "dev", "link", "init", "config"].includes(command) && isMoonSdkDirectory()) {
+try {
+if (["run", "start", "dev", "link", "init", "config", "db", "sync"].includes(command) && isMoonSdkDirectory()) {
   print("✗ Esta é a pasta do SDK Moon, não a pasta de um aplicativo.");
   print("Entre na pasta do projeto exportado e rode: moon run .");
   process.exitCode = 1;
@@ -652,8 +662,17 @@ else if (command === "init" || command === "config" || command === "link") await
 else if (command === "login") importFromPlatform(["login"]);
 else if (command === "eject") importFromPlatform(["eject"]);
 else if (command === "doctor") doctor();
+else if (command === "sync") {
+  const { syncProject } = await import("./project-sync.mjs");
+  syncProject(projectDir, subcommand, print, { refreshLocal: process.argv.includes("--refresh-local") });
+}
 else if (command === "db") {
-  try { await setupDatabase(); }
+  try {
+    if (subcommand) {
+      const { databaseMigration } = await import("./database-migrations.mjs");
+      await databaseMigration(projectDir, subcommand, { apply: process.argv.includes("--apply"), env: readProjectEnv(), print });
+    } else await setupDatabase();
+  }
   catch (error) { print("Falha ao preparar o banco: " + error.message); process.exitCode = 1; }
 }
 else if (command === "test") await testConfigured();
@@ -664,6 +683,8 @@ else if (command === "start") {
   else await configure({ startAfter: true });
 }
 else if (command === "run") {
+  const { validateSyncIfPresent } = await import("./project-sync.mjs");
+  validateSyncIfPresent(projectDir);
   if (noDatabase) {
     const existingConfig = readConfig();
     if (!existingConfig) {
@@ -677,7 +698,7 @@ else if (command === "run") {
     if (aiRequired && process.env.MOON_AI_API_KEY) print("✓ IA detectada e já configurada; mantendo a chave existente");
     else if (aiRequired) await configureAi();
     else print("✓ Nenhum recurso de IA detectado; configuração de IA ignorada");
-    runLocalProcesses();
+    await runLocalProcesses();
   } else {
   if (!readConfig() || readConfig().provider !== "none" && !existsSync(resolve(projectDir, "moon/database-report.json"))) {
     await setupDatabase();
@@ -698,9 +719,10 @@ else if (command === "run") {
     if (aiRequired && process.env.MOON_AI_API_KEY) print("✓ IA detectada e já configurada; mantendo a chave existente");
     else if (aiRequired) await configureAi();
     else print("✓ Nenhum recurso de IA detectado; configuração de IA ignorada");
-    runLocalProcesses();
+    await runLocalProcesses();
     }
   }
   }
 }
 else { print(`Comando desconhecido: ${command}`); help(); process.exitCode = 1; }
+} catch (error) { console.error("Moon: " + error.message); process.exitCode = 1; }

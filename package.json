@@ -10,7 +10,9 @@
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "DATABASES.md",
+    "SYNC.md"
   ],
   "scripts": {
     "build": "tsc",

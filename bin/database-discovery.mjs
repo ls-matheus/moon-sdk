@@ -6,7 +6,7 @@ import { normalizeSchema } from "./database-schema.mjs";
 // Static analysis only: application code is never imported or executed.
 export function inferApplicationSchema(directory) {
   const files = [];
-  const ignored = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage", "moon", "tests", "__tests__"]);
+  const ignored = new Set(["node_modules", ".git", ".moon", "dist", "build", ".next", "coverage", "moon", "tests", "__tests__"]);
   function walk(folder) {
     for (const entry of readdirSync(folder, { withFileTypes: true })) {
       if (entry.isSymbolicLink() || ignored.has(entry.name)) continue;
