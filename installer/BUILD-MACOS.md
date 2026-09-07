@@ -5,8 +5,10 @@ Execute `bash installer/build-macos.sh` em um Mac com Node.js 22 para gerar
 sem depender de uma publicação de @moon/sdk no npm.
 
 O usuário abre o pacote no Installer e autoriza a instalação. Não é necessário
-ter Node.js previamente. A instalação precisa de internet para baixar o Node.js
-22 e as dependências npm. O tarball do Node é verificado pelo SHA-256 oficial.
+ter Node.js previamente. O pacote inclui Node.js 22 para Intel e Apple Silicon,
+Moon e suas dependências instaladas com package-lock.json, além do Base44 SDK.
+A instalação é offline: nenhum npm install ou download ocorre no Mac do usuário.
+O build precisa de internet; o tarball do Node é verificado pelo SHA-256 oficial.
 
 O runtime fica em /usr/local/lib/moon-sdk/releases. A versão atual só é
 ativada depois que Node, npm, moon --help e a importação do SDK passam.

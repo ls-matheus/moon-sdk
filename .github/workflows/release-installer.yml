@@ -49,6 +49,13 @@ jobs:
           node-version: '22'
       - name: Criar instalador macOS
         run: bash installer/build-macos.sh
+      - name: Testar conteúdo do pacote sem acesso à rede
+        run: |
+          testdir="$(mktemp -d)"
+          pkgutil --expand-full Moon-SDK-Installer.pkg "$testdir/package"
+          sandbox-exec -p '(version 1) (allow default) (deny network*)' \
+            /bin/bash "$testdir/package/Scripts/install-runtime.sh" \
+            "$testdir/runtime" "$testdir/package/Scripts/moon-sdk.tgz"
       - name: Testar instalação e reinstalação reais
         run: |
           sudo installer -pkg Moon-SDK-Installer.pkg -target /
