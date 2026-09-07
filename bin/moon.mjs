@@ -207,6 +207,9 @@ function writeEnvValues(values, targetPath = envPath) {
   }
   writeFileSync(targetPath, content.replace(/^\n+/, ""));
   if (!windows) chmodSync(targetPath, 0o600);
+  const ignorePath = resolve(targetPath, "..", ".gitignore");
+  const ignore = existsSync(ignorePath) ? readFileSync(ignorePath, "utf8") : "";
+  if (!ignore.split(/\r?\n/).includes(".env.local")) writeFileSync(ignorePath, ignore.trimEnd() + "\n.env.local\n");
 }
 
 function withRuntimeAliases(provider, values) {
@@ -260,9 +263,9 @@ async function configureAi() {
 
 function runLocalProcesses() {
   const serverPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "local-server.mjs");
-  const backend = spawn(process.execPath, [serverPath], { cwd: projectDir, stdio: "inherit", env: process.env });
   const frontendDir = findRunnableProject(projectDir);
   if (frontendDir) migrateImportedProject(frontendDir);
+  const backend = spawn(process.execPath, [serverPath], { cwd: projectDir, stdio: "inherit", env: process.env });
   const frontend = frontendDir ? spawn(npmCommand, ["run", "dev"], { cwd: frontendDir, stdio: "inherit", env: process.env, shell: windows }) : null;
   const stop = () => {
     stopProcessTree(backend);

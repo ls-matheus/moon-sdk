@@ -101,9 +101,9 @@ export function createSqlAdapter(executor: SqlExecutor, provider: "postgres" | "
         let sql = "SELECT " + projection + " FROM " + table + (where ? " WHERE " + where : "");
         if (request.order) sql += " ORDER BY " + quote(request.order.field) + (request.order.ascending ? " ASC" : " DESC");
         const limit = pagination(request.limit), offset = pagination(request.offset);
-        if (limit != null) sql += " LIMIT " + bind(limit);
+        if (limit != null) sql += " LIMIT " + (provider === "mysql" ? String(limit) : bind(limit));
         else if (offset != null && provider === "mysql") sql += " LIMIT 18446744073709551615";
-        if (offset != null) sql += " OFFSET " + bind(offset);
+        if (offset != null) sql += " OFFSET " + (provider === "mysql" ? String(offset) : bind(offset));
         return executor.query<T>(sql, params);
       }
       if (request.action === "insert") {

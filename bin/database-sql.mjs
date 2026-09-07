@@ -18,7 +18,11 @@ export async function connectSql(provider, url) {
     });
     await connection.query("SET time_zone = '+00:00'");
     const executor = {
-      async query(sql, params = []) { const [rows] = await connection.execute(sql, params); return { rows: Array.isArray(rows) ? rows : [], affected: rows.affectedRows }; },
+      async query(sql, params = []) {
+        // Transaction/DDL commands are not all supported by the prepared-statement protocol.
+        const [rows] = params.length ? await connection.execute(sql, params) : await connection.query(sql);
+        return { rows: Array.isArray(rows) ? rows : [], affected: rows.affectedRows };
+      },
       close: () => connection.end(),
       async transaction(run) {
         await connection.beginTransaction();
