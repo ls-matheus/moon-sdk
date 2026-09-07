@@ -6,7 +6,9 @@ O `install.exe` não embute uma cópia do SDK: durante a instalação ele baixa 
 
 O workflow `release-installer.yml` recompila o instalador em todo push para `main` e atualiza a release `latest`, substituindo o `install.exe` anterior. Uma execução manual permite criar uma release com uma tag própria, como `v1.0.0`.
 
-O mesmo workflow também gera `install.dmg` em um runner macOS. O DMG contém `install-moon.command`; abra-o no Finder para instalar o Moon SDK via npm. O macOS precisa ter o Node.js LTS instalado.
+O mesmo workflow também gera `install.dmg` em um runner macOS. O DMG contém o aplicativo `Moon SDK Installer.app`, com interface gráfica, verificação do Node.js e solicitação de senha de administrador para instalar o Moon SDK e o Base44 SDK. O macOS precisa ter o Node.js LTS instalado.
+
+Os builds são independentes: cada instalador é publicado na Release assim que seu próprio workflow termina, sem esperar a outra plataforma.
 
 Também é possível compilar manualmente:
 
