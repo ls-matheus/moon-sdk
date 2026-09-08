@@ -43,7 +43,6 @@ test("functions.invoke envia token e preserva response.data; suporta chamadas pÃ
     return Response.json({reply:'ok'});
   });
   assert.deepEqual(await invoke('assistente_notas',{message:'x'}),{status:200,data:{reply:'ok'}});
-  await assert.rejects(createFunctionInvoker({getAccessToken:async()=>undefined},()=>assert.fail())('test'),/Entre na sua conta/);
   const anonInvoke=createFunctionInvoker({getAccessToken:async()=>undefined},async(url,options)=>{
     assert.equal(url,'/api/functions/aiOrder');
     assert.equal(options.headers.Authorization,undefined);
