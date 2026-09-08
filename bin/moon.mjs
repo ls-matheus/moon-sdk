@@ -397,6 +397,7 @@ const sdk = createBrowserClient({
     authDomain: import.meta.env.VITE_MOON_FIREBASE_AUTH_DOMAIN,
     appId: import.meta.env.VITE_MOON_FIREBASE_APP_ID,
   },
+  publicEntities: ${JSON.stringify((JSON.parse(readFileSync(resolve(projectDir, "moon/schema.json"), "utf8"))?.entities ? Object.entries(JSON.parse(readFileSync(resolve(projectDir, "moon/schema.json"), "utf8")).entities).filter(([, entity]) => entity.access === "public").map(([name]) => name) : []))},
 });
 const auth = {
   verifyOtp: params => sdk.auth.verifyOtp({ ...params, token: params.otpCode || params.token }),

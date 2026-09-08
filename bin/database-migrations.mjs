@@ -12,7 +12,16 @@ export function planMigration(before, after, provider) {
   for (const [entity, def] of Object.entries(previous.entities)) {
     const target = next.entities[entity];
     if (!target) { blocked.push(`Remoção de ${entity}`); continue; }
-    if (def.access !== target.access) blocked.push(`Mudança de acesso: ${entity}`);
+    if (def.access !== target.access) {
+      if (provider === "supabase" && def.access === "owner" && target.access === "public") {
+        const table = quote(tableName(entity));
+        changes.push(`Tornar ${entity} público somente para leitura`);
+        statements.push(`DROP POLICY IF EXISTS moon_owner ON ${table}`);
+        statements.push(`CREATE POLICY moon_public_read ON ${table} FOR SELECT TO anon, authenticated USING (true)`);
+        statements.push(`GRANT SELECT ON ${table} TO anon, authenticated`);
+        statements.push(`REVOKE INSERT, UPDATE, DELETE ON ${table} FROM anon, authenticated`);
+      } else blocked.push(`Mudança de acesso: ${entity}`);
+    }
     for (const [field, definition] of Object.entries(def.fields)) {
       if (!target.fields[field]) blocked.push(`Remoção de ${entity}.${field}`);
       else if (!isDeepStrictEqual(definition, target.fields[field])) blocked.push(`Mudança de tipo/regra: ${entity}.${field}`);

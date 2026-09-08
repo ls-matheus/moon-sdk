@@ -34,10 +34,14 @@ export async function verifyUser(token, config, env) {
 }
 
 export function authorizeQuery(payload, schema, user) {
-  if (!payload || !user?.id) throw new Error("Consulta ou usuário inválido.");
   const definition = Object.entries(schema.entities).find(([name]) => tableName(name) === payload.table)?.[1];
-  if (!definition || definition.access !== "owner") throw new Error("Entidade indisponível para acesso pelo navegador.");
+  if (!definition || !["owner", "public"].includes(definition.access)) throw new Error("Entidade indisponível para acesso pelo navegador.");
   if (!["select", "insert", "update", "delete"].includes(payload.action)) throw new Error("Operação inválida.");
+  if (definition.access === "public") {
+    if (payload.action !== "select") throw new Error("Entidade pública permite apenas leitura.");
+    return { ...payload, filters: Array.isArray(payload.filters) ? payload.filters : [], limit: payload.limit ?? 100 };
+  }
+  if (!user?.id) throw new Error("Consulta ou usuário inválido.");
   const fields = definition.fields;
   const operators = ["$eq", "$neq", "$gt", "$gte", "$lt", "$lte", "$in", "$is", "$ilike"];
   if (!Array.isArray(payload.filters) || payload.filters.length > 20) throw new Error("Filtros inválidos.");
@@ -78,7 +82,8 @@ export async function queryDatabase(payload, token, config, env, directory) {
   if (!["postgres", "mysql", "supabase"].includes(config.provider)) throw new Error("Este endpoint atende PostgreSQL, Supabase e MySQL.");
   const schema = discoverSchema(directory)?.schema;
   if (!schema) throw new Error("Schema ausente.");
-  const user = await verifyUser(token, config, env);
+  const definition = Object.entries(schema.entities).find(([name]) => tableName(name) === payload?.table)?.[1];
+  const user = definition?.access === "public" && payload?.action === "select" ? null : await verifyUser(token, config, env);
   const request = authorizeQuery(payload, schema, user);
   const connection = await connectSql(config.provider, env.MOON_DATABASE_URL);
   try {

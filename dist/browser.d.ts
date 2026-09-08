@@ -6,6 +6,7 @@ export interface BrowserOptions {
     supabaseUrl?: string;
     supabaseKey?: string;
     firebase?: Record<string, string>;
+    publicEntities?: string[];
     endpoint?: string;
 }
 export declare function createBrowserClient(options: BrowserOptions): import("./types.js").MoonClient;

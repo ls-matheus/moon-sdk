@@ -15,6 +15,7 @@ export interface BrowserOptions {
   supabaseUrl?: string;
   supabaseKey?: string;
   firebase?: Record<string, string>;
+  publicEntities?: string[];
   endpoint?: string;
 }
 export function createBrowserClient(options: BrowserOptions) {
@@ -67,15 +68,28 @@ export function createBrowserClient(options: BrowserOptions) {
   if (options.provider === "firebase") database = createFirebaseAdapter(firestore, auth, true);
   else if (options.provider === "supabase") {
     database = createAdapter({ provider: "supabase", auth, async execute<T>(request: QueryRequest) {
-      const user = (await auth.getUser()).user;
-      if (!user) throw new Error("Login necessário.");
+      const publicTable = options.publicEntities?.some(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`) === request.table);
+      const user = publicTable ? null : (await auth.getUser()).user;
+      if (!user && !publicTable) throw new Error("Login necessário.");
+      if (publicTable) {
+        if (request.action !== "select") throw new Error("Entidade pública permite apenas leitura.");
+        const session = (await auth.getSession()).session;
+        const response = await fetch(options.endpoint || "/api/database", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(session?.access_token ? { Authorization: "Bearer " + session.access_token } : {}) },
+          body: JSON.stringify(request),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Falha no banco de dados.");
+        return { rows: data.rows as T[] };
+      }
       let query: any = supabase!.from(request.table);
       if (request.action === "insert") {
         const values = Array.isArray(request.values) ? request.values : [request.values];
-        query = query.insert(values.map(value => ({ id: crypto.randomUUID(), ...(value as object), user_id: user.id })));
-      } else if (request.action === "update") query = query.update({ ...(request.values as object), updated_at: new Date().toISOString(), user_id: user.id }).eq("user_id", user.id);
-      else if (request.action === "delete") query = query.delete().eq("user_id", user.id);
-      else query = query.select((request.select || ["*"]).join(",")).eq("user_id", user.id);
+        query = query.insert(values.map(value => ({ id: crypto.randomUUID(), ...(value as object), user_id: user!.id })));
+      } else if (request.action === "update") query = query.update({ ...(request.values as object), updated_at: new Date().toISOString(), user_id: user?.id }).eq("user_id", user?.id);
+      else if (request.action === "delete") query = query.delete().eq("user_id", user?.id);
+      else { query = query.select((request.select || ["*"]).join(",")); if (!publicTable) query = query.eq("user_id", user?.id); }
       const operators: Record<string, string> = { $eq: "eq", $neq: "neq", $gt: "gt", $gte: "gte", $lt: "lt", $lte: "lte", $in: "in", $is: "is", $ilike: "ilike" };
       for (const filter of request.filters) {
         const operation = operators[filter.operator];

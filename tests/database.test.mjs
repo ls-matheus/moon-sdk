@@ -17,7 +17,9 @@ test("schema comum é determinístico e rejeita dados inválidos", () => {
   assert.equal(schemaHash(schema), schemaHash(fixture));
   assert.equal(schema.entities.Note.fields.id.type, "uuid");
   assert.throws(() => normalizeSchema({ version: 1, entities: { 'bad; DROP TABLE users': fixture.entities.Note } }));
-  assert.throws(() => normalizeSchema({ version: 1, entities: { Note: { access: "public", fields: {} } } }));
+  const catalog = normalizeSchema({ version: 1, entities: { Donut: { access: "public", fields: { name: { type: "string" } } } } });
+  assert.equal(catalog.entities.Donut.access, "public");
+  assert.throws(() => normalizeSchema({ version: 1, entities: { Note: { access: "unknown", fields: {} } } }));
   assert.throws(() => normalizeSchema({ version: 1, entities: { Note: { access: "private", fields: { amount: { type: "money" } } } } }));
 });
 test("PostgreSQL puro não recebe auth do Supabase; MySQL não recebe sintaxe PG", () => {

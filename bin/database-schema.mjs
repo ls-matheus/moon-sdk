@@ -25,8 +25,8 @@ export function normalizeSchema(input) {
     const table = tableName(entity);
     if (names.has(table)) throw new Error(`Entidades colidem na tabela ${table}`);
     names.add(table);
-    if (!definition.fields || !["owner", "private"].includes(definition.access))
-      throw new Error(`${entity}: informe fields e access (owner ou private).`);
+    if (!definition.fields || !["owner", "private", "public"].includes(definition.access))
+      throw new Error(`${entity}: informe fields e access (owner, public ou private).`);
     const fields = {
       id: { type: "uuid", required: true },
       created_at: { type: "datetime", required: true },
@@ -123,6 +123,9 @@ export function compileSql(input, provider) {
       if (def.access === "owner") {
         statements.push(`CREATE POLICY moon_owner ON ${table} FOR ALL TO authenticated USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id)`);
         statements.push(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${table} TO authenticated`);
+      } else if (def.access === "public") {
+        statements.push(`CREATE POLICY moon_public_read ON ${table} FOR SELECT TO anon, authenticated USING (true)`);
+        statements.push(`GRANT SELECT ON ${table} TO anon, authenticated`);
       }
     }
   }
@@ -143,8 +146,9 @@ export function compileFirestore(input) {
     const valid = `d.keys().hasAll(${JSON.stringify(required)}) && d.keys().hasOnly(${JSON.stringify(fields.map(([k]) => k))}) && d.id == document && ${checks.join(" && ") || "true"}`;
     blocks.push(`    match /${tableName(entity)}/{document} {
       function valid(d) { return ${valid}; }
-      allow get: if ${def.access === "owner" ? "request.auth != null && (!exists(/databases/$(database)/documents/" + tableName(entity) + "/$(document)) || resource.data.user_id == request.auth.uid)" : "false"};
-      allow list, delete: if ${def.access === "owner" ? "request.auth != null && resource.data.user_id == request.auth.uid" : "false"};
+      allow get: if ${def.access === "public" ? "true" : def.access === "owner" ? "request.auth != null && (!exists(/databases/$(database)/documents/" + tableName(entity) + "/$(document)) || resource.data.user_id == request.auth.uid)" : "false"};
+      allow list: if ${def.access === "public" ? "true" : def.access === "owner" ? "request.auth != null && resource.data.user_id == request.auth.uid" : "false"};
+      allow delete: if ${def.access === "owner" ? "request.auth != null && resource.data.user_id == request.auth.uid" : "false"};
       allow create: if ${def.access === "owner" ? "request.auth != null && request.resource.data.user_id == request.auth.uid && valid(request.resource.data)" : "false"};
       allow update: if ${def.access === "owner" ? "request.auth != null && resource.data.user_id == request.auth.uid && request.resource.data.user_id == request.auth.uid && valid(request.resource.data)" : "false"};
     }`);
