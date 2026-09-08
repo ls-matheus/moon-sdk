@@ -24,5 +24,17 @@ for profile in "$HOME/.zprofile" "$HOME/.bash_profile"; do
     printf '\n%s\n' "$path_line" >> "$profile"
   fi
 done
-"$HOME/.local/bin/moon" --help
-echo 'Moon instalado sem administrador. Abra um novo Terminal e execute moon --help.'
+if "$HOME/.local/bin/moon" --help; then
+  echo 'Moon instalado sem administrador. Abra um novo Terminal e execute moon --help.'
+else
+  echo 'Falha na ativação do launcher do Moon. Capturando diagnósticos de setup:' >&2
+  echo "PATH=$PATH" >&2
+  echo 'Conteúdo de $HOME/.local/bin:' >&2
+  ls -al "$HOME/.local/bin" >&2 || true
+  echo "Conteúdo do release ($release):" >&2
+  ls -al "$release" >&2 || true
+  echo 'Últimas linhas do log de instalação:' >&2
+  tail -n 200 "$root/install.log" >&2 || true
+  echo 'Fim dos diagnósticos.' >&2
+  exit 1
+fi

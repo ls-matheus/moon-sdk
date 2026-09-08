@@ -46,6 +46,19 @@ chmod 755 "$destination/lib/node_modules/@moon/sdk/bin/moon.mjs"
 node --version
 npm --version
 npm ls --global --prefix "$destination" --depth=0
-moon --help
+if moon --help; then
+  :
+else
+  echo 'Falha na ativação do comando "moon". Capturando diagnósticos de setup:' >&2
+  echo "PATH=$PATH" >&2
+  echo "Conteúdo de $destination/bin:" >&2
+  ls -al "$destination/bin" >&2 || true
+  echo "Conteúdo de $destination/lib/node_modules:@moon/sdk:" >&2
+  ls -al "$destination/lib/node_modules" | sed -n '1,200p' >&2 || true
+  echo 'Saída de npm ls --global --prefix:' >&2
+  npm ls --global --prefix "$destination" --depth=0 >&2 || true
+  echo 'Fim dos diagnósticos.' >&2
+  exit 1
+fi
 node --input-type=module -e 'await import(process.argv[1])' "$destination/lib/node_modules/@moon/sdk/dist/index.js"
 test -f "$destination/lib/node_modules/@base44/sdk/package.json"
