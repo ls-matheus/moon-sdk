@@ -7,6 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
+import { withRuntimeAliases } from "./runtime-env.mjs";
 
 const command = process.argv[2] || "help";
 const subcommand = command === "sync" || command === "db" && ["diff", "migrate"].includes(process.argv[3]) ? process.argv[3] : null;
@@ -218,22 +219,6 @@ function writeEnvValues(values, targetPath = envPath) {
   if (!ignore.split(/\r?\n/).includes(".env.local")) writeFileSync(ignorePath, ignore.trimEnd() + "\n.env.local\n");
 }
 
-function withRuntimeAliases(provider, values) {
-  values = {
-    ...values,
-    ...(values.MOON_AUTH_PROVIDER ? { VITE_MOON_AUTH_PROVIDER: values.MOON_AUTH_PROVIDER } : {}),
-    ...Object.fromEntries(["API_KEY", "PROJECT_ID", "AUTH_DOMAIN", "APP_ID"].filter(key => values["MOON_FIREBASE_" + key]).map(key => ["VITE_MOON_FIREBASE_" + key, values["MOON_FIREBASE_" + key]])),
-  };
-  if (provider === "supabase" || values.MOON_AUTH_PROVIDER === "supabase") {
-    return {
-      ...values,
-      VITE_SUPABASE_URL: values.MOON_SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: values.MOON_SUPABASE_ANON_KEY,
-    };
-  }
-  return values;
-}
-
 function parseEnvValue(value) {
   const trimmed = value.trim();
   if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
@@ -342,7 +327,7 @@ async function migrateImportedProject(appDir) {
   const install = spawnSync(npmCommand, ["install", "--save", windows ? `"${sdkPath}"` : sdkPath], { cwd: appDir, stdio: "inherit", shell: windows });
   if (install.status !== 0) throw new Error("não foi possível instalar o Moon no projeto importado");
   const activeConfig = readConfig();
-  writeEnvValues(withRuntimeAliases(activeConfig.provider, { ...readEnvValues(activeConfig.env || []), VITE_MOON_DEV_AUTH_BYPASS: activeConfig.provider === "none" ? "true" : "false" }), resolve(appDir, ".env.local"));
+  writeEnvValues(withRuntimeAliases(noDatabase ? "none" : activeConfig.provider, { ...readEnvValues(activeConfig.env || []), ...(activeConfig.authProvider ? { MOON_AUTH_PROVIDER: activeConfig.authProvider } : {}) }), resolve(appDir, ".env.local"));
   const viteConfigPath = ["vite.config.js", "vite.config.mjs", "vite.config.ts"]
     .map((relativePath) => resolve(appDir, relativePath)).find((candidate) => existsSync(candidate));
   if (viteConfigPath && (!readFileSync(viteConfigPath, "utf8").includes("alias: { \"@\":") || readFileSync(viteConfigPath, "utf8").includes("@base44/vite-plugin") || !readFileSync(viteConfigPath, "utf8").includes("127.0.0.1:8787"))) {
@@ -365,7 +350,7 @@ export default defineConfig({
   const backupPath = clientPath + ".before-moon";
   if (!existsSync(backupPath)) writeFileSync(backupPath, source);
   const { installLoginBootstrap } = await import("./runtime-auth.mjs");
-  const loginUi = installLoginBootstrap(appDir, clientPath, activeConfig.provider, activeConfig.authUi);
+  const loginUi = installLoginBootstrap(appDir, clientPath, noDatabase ? "none" : activeConfig.provider, activeConfig.authUi);
   print(loginUi.mode === 'app' ? '✓ Tela de login do aplicativo preservada; autenticação pelo provedor configurado.' : '✓ Aplicativo sem login próprio: usando a tela padrão do Moon.');
   const { discoverSchema } = await import("./database-schema.mjs");
   let publicEntities = [];
@@ -378,7 +363,7 @@ export default defineConfig({
     }
   } catch { /* schema discovery is advisory */ }
   writeFileSync(clientPath, `import { createBrowserClient } from "@moon/sdk";
-import { createFunctionInvoker, createLoginRedirect } from "/src/moon-client-bridge.mjs";
+import { createFunctionInvoker, createLoginRedirect, createLLMInvoker } from "/src/moon-client-bridge.mjs";
 
 const sdk = createBrowserClient({
   provider: import.meta.env.VITE_MOON_PROVIDER || "supabase",
@@ -412,6 +397,7 @@ export const base44 = {
   },
   app: { getPublicSettings: async () => ({}) },
   entities: sdk.entities,
+  integrations: { Core: { InvokeLLM: createLLMInvoker(sdk.auth) } },
   functions: { invoke: createFunctionInvoker(sdk.auth) },
   agents: {
     createConversation: async () => { throw new Error("Agentes Base44 ainda não têm adaptação local com persistência. Execute moon inspect."); },

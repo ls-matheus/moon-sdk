@@ -263,12 +263,35 @@ export function createMemoryAdapter(storage?: { getItem(key: string): string | n
     auth,
     async execute<T>(request: QueryRequest) {
       const rows = read(request.table);
-      const matches = (row: Record<string, unknown>) => request.filters.every((filter) => filter.operator === "$eq" ? row[filter.field] === filter.value : filter.operator === "$is" ? row[filter.field] === filter.value : true);
+      const predicates = request.filters.map(({ field, operator, value }) => {
+        if (operator === "$in" && !Array.isArray(value)) throw new Error("$in exige uma lista.");
+        if (!["$eq", "$is", "$neq", "$gt", "$gte", "$lt", "$lte", "$in", "$ilike"].includes(operator)) throw new Error("Operador não suportado: " + operator);
+        const pattern = operator === "$ilike" ? new RegExp('^' + String(value).split('').map(char => char === '%' ? '.*' : char === '_' ? '.' : char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('') + '$', 'is') : undefined;
+        return (row: Record<string, unknown>) => {
+          const actual = row[field] as any;
+          const expected = value as any;
+          switch (operator) {
+            case "$eq": case "$is": return actual === expected;
+            case "$neq": return actual !== expected;
+            case "$in": return expected.includes(actual);
+            case "$ilike": return typeof actual === 'string' && pattern!.test(actual);
+            case "$gt": return actual != null && actual > expected;
+            case "$gte": return actual != null && actual >= expected;
+            case "$lt": return actual != null && actual < expected;
+            case "$lte": return actual != null && actual <= expected;
+          }
+        };
+      });
+      const matches = (row: Record<string, unknown>) => predicates.every(predicate => predicate(row));
       if (request.action === "select") {
         let result = rows.filter(matches);
-        if (request.order) result.sort((a, b) => String(a[request.order!.field] ?? "").localeCompare(String(b[request.order!.field] ?? "")) * (request.order!.ascending ? 1 : -1));
+        if (request.order) result.sort((a, b) => {
+          const left = a[request.order!.field] as any, right = b[request.order!.field] as any;
+          return (left === right ? 0 : left == null ? -1 : right == null ? 1 : left < right ? -1 : 1) * (request.order!.ascending ? 1 : -1);
+        });
         if (request.offset != null) result = result.slice(request.offset);
         if (request.limit != null) result = result.slice(0, request.limit);
+        if (request.select && !request.select.includes('*')) result = result.map(row => Object.fromEntries(request.select!.filter(field => Object.hasOwn(row, field)).map(field => [field, row[field]])));
         return { rows: result as T[] };
       }
       if (request.action === "insert") {

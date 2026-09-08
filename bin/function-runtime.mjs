@@ -62,7 +62,7 @@ export async function invokeLocalFunction(name, payload, token, config, env, dir
   let llmCalls = 0;
   return runFunctionSource(source, payload, user, async (method, args) => {
     if (method === "entity") {
-      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(args.entity) || !["list", "filter", "get", "create", "update", "delete"].includes(args.method) || !Array.isArray(args.args) || args.args.length > 5) throw new Error("Consulta de função não suportada.");
+      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(args.entity) || !["list", "filter", "get", "create", "update", "delete", "bulkCreate", "bulkUpdate"].includes(args.method) || !Array.isArray(args.args) || args.args.length > 5) throw new Error("Consulta de função não suportada.");
       try { return await (args.serviceRole ? serviceClient : client).entities[args.entity][args.method](...args.args); }
       catch (error) { error.publicMessage = 'Operação de dados recusada. Confira login, campos e permissões desta função.'; throw error; }
     }

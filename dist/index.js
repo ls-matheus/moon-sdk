@@ -20,18 +20,25 @@ function applyFilter(query, filter) {
         const column = canonicalField(name);
         if (value && typeof value === "object" && !Array.isArray(value)) {
             for (const [operator, operand] of Object.entries(value)) {
-                if (operator === "$eq")
-                    result = result.eq(column, operand);
-                else if (operator === "$is")
-                    result = result.eq(column, operand);
+                const normalized = operator === "$ne" ? "$neq" : operator;
+                const methods = { $eq: "eq", $is: "is", $neq: "neq", $gt: "gt", $gte: "gte", $lt: "lt", $lte: "lte", $in: "in", $ilike: "ilike", $contains: "contains" };
+                const method = operand === null && normalized === "$eq" ? "is" : methods[normalized];
+                const direct = result;
+                if (normalized === "$neq" && operand === null && typeof direct.not === "function")
+                    result = direct.not(column, "is", null);
+                else if (method && typeof direct[method] === "function")
+                    result = direct[method](column, operand);
                 else if (result.where)
-                    result = result.where(column, operator, operand);
+                    result = result.where(column, normalized, operand);
+                else if (normalized === "$is")
+                    result = result.eq(column, operand);
                 else
                     throw new Error(`Filter operator ${operator} is not supported by this database adapter`);
             }
         }
         else {
-            result = result.eq(column, value);
+            const nullable = result;
+            result = value === null && nullable.is ? nullable.is(column, null) : result.eq(column, value);
         }
     }
     return result;
@@ -68,6 +75,26 @@ function makeEntity(db, table) {
         async create(data) {
             const rows = await unwrap(db.from(table).insert(data).select("*"));
             return rows[0];
+        },
+        async bulkCreate(data) {
+            if (!Array.isArray(data))
+                throw new Error("bulkCreate exige uma lista de registros.");
+            if (!data.length)
+                return [];
+            return unwrap(db.from(table).insert(data).select("*"));
+        },
+        async bulkUpdate(data) {
+            if (!Array.isArray(data) || data.some(row => !row || typeof row.id !== "string" || !row.id)) {
+                throw new Error("bulkUpdate exige registros com id.");
+            }
+            const rows = [];
+            for (const { id, ...values } of data) {
+                const updated = await unwrap(db.from(table).update(values).eq("id", id).select("*"));
+                if (!updated[0])
+                    throw new Error(`${table} record ${id} was not found`);
+                rows.push(updated[0]);
+            }
+            return rows;
         },
         async update(id, data) {
             const rows = await unwrap(db.from(table).update(data).eq("id", id).select("*"));

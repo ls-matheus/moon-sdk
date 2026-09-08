@@ -16,7 +16,7 @@ parentPort.on("message", message => {
 
 const entities = serviceRole => new Proxy({}, { get(_target, entity) {
   if (typeof entity !== "string" || entity === "then") return undefined;
-  return Object.fromEntries(["list", "filter", "get", "create", "update", "delete"].map(method => [
+  return Object.fromEntries(["list", "filter", "get", "create", "update", "delete", "bulkCreate", "bulkUpdate"].map(method => [
     method,
     (...args) => rpc("entity", { entity, method, args, ...(serviceRole ? { serviceRole: true } : {}) })
   ]));

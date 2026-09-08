@@ -286,15 +286,42 @@ export function createMemoryAdapter(storage) {
         auth,
         async execute(request) {
             const rows = read(request.table);
-            const matches = (row) => request.filters.every((filter) => filter.operator === "$eq" ? row[filter.field] === filter.value : filter.operator === "$is" ? row[filter.field] === filter.value : true);
+            const predicates = request.filters.map(({ field, operator, value }) => {
+                if (operator === "$in" && !Array.isArray(value))
+                    throw new Error("$in exige uma lista.");
+                if (!["$eq", "$is", "$neq", "$gt", "$gte", "$lt", "$lte", "$in", "$ilike"].includes(operator))
+                    throw new Error("Operador não suportado: " + operator);
+                const pattern = operator === "$ilike" ? new RegExp('^' + String(value).split('').map(char => char === '%' ? '.*' : char === '_' ? '.' : char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('') + '$', 'is') : undefined;
+                return (row) => {
+                    const actual = row[field];
+                    const expected = value;
+                    switch (operator) {
+                        case "$eq":
+                        case "$is": return actual === expected;
+                        case "$neq": return actual !== expected;
+                        case "$in": return expected.includes(actual);
+                        case "$ilike": return typeof actual === 'string' && pattern.test(actual);
+                        case "$gt": return actual != null && actual > expected;
+                        case "$gte": return actual != null && actual >= expected;
+                        case "$lt": return actual != null && actual < expected;
+                        case "$lte": return actual != null && actual <= expected;
+                    }
+                };
+            });
+            const matches = (row) => predicates.every(predicate => predicate(row));
             if (request.action === "select") {
                 let result = rows.filter(matches);
                 if (request.order)
-                    result.sort((a, b) => String(a[request.order.field] ?? "").localeCompare(String(b[request.order.field] ?? "")) * (request.order.ascending ? 1 : -1));
+                    result.sort((a, b) => {
+                        const left = a[request.order.field], right = b[request.order.field];
+                        return (left === right ? 0 : left == null ? -1 : right == null ? 1 : left < right ? -1 : 1) * (request.order.ascending ? 1 : -1);
+                    });
                 if (request.offset != null)
                     result = result.slice(request.offset);
                 if (request.limit != null)
                     result = result.slice(0, request.limit);
+                if (request.select && !request.select.includes('*'))
+                    result = result.map(row => Object.fromEntries(request.select.filter(field => Object.hasOwn(row, field)).map(field => [field, row[field]])));
                 return { rows: result };
             }
             if (request.action === "insert") {

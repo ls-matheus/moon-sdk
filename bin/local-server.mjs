@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { queryDatabase, verifyUser } from "./database-api.mjs";
 import { invokeLocalFunction } from "./function-runtime.mjs";
+import { invokeLLM } from "./structured-ai.mjs";
 import { isAllowedOrigin } from './http-security.mjs';
 
 const port = Number(process.env.MOON_BACKEND_PORT || 8787);
@@ -91,7 +92,7 @@ const server = createServer((request, response) => {
     });
     return;
   }
-  if (request.method === "POST" && (request.url === "/api/ai/chat" || request.url.startsWith("/api/functions/"))) {
+  if (request.method === "POST" && (request.url === "/api/ai/chat" || request.url === "/api/ai/invoke" || request.url.startsWith("/api/functions/"))) {
     let raw = "", size = 0, oversized = false;
     request.on("data", (chunk) => { size += chunk.length; if (size > 1048576) {oversized = true; return;} raw += chunk; });
     request.on("end", async () => {
@@ -105,6 +106,10 @@ const server = createServer((request, response) => {
         }
         if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         await verifyUser(token, loadConfig(), process.env);
+        if (request.url === '/api/ai/invoke') {
+          response.end(JSON.stringify(await invokeLLM(payload, askAi)));
+          return;
+        }
         const content = await askAi(Array.isArray(payload.messages) ? payload.messages : []);
         response.end(JSON.stringify({ content }));
       } catch (error) {
@@ -134,5 +139,5 @@ const server = createServer((request, response) => {
   response.end(JSON.stringify({ error: "Not found" }));
 });
 
-server.listen(port, "127.0.0.1", () => console.log(`Moon backend escutando em http://localhost:${port}`));
+server.listen(port, "127.0.0.1", () => console.log(`Moon backend escutando em http://localhost:${server.address().port}`));
 server.on("error", (error) => { console.error(`Moon backend: ${error.message}`); process.exit(1); });

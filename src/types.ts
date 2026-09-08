@@ -1,7 +1,7 @@
 export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 
 export type QueryOperator =
-  | "$eq" | "$neq" | "$gt" | "$gte" | "$lt" | "$lte"
+  | "$eq" | "$ne" | "$neq" | "$gt" | "$gte" | "$lt" | "$lte"
   | "$in" | "$ilike" | "$contains" | "$is";
 
 export type FilterValue = Json | { [operator in QueryOperator]?: Json };
@@ -63,6 +63,8 @@ export interface EntityHandler<T = Record<string, unknown>> {
   filter(query: EntityFilter, sort?: string, limit?: number, skip?: number, fields?: (keyof T)[]): Promise<Partial<T>[]>;
   get(id: string): Promise<T>;
   create(data: Partial<T>): Promise<T>;
+  bulkCreate(data: Partial<T>[]): Promise<T[]>;
+  bulkUpdate(data: (Partial<T> & { id: string })[]): Promise<T[]>;
   update(id: string, data: Partial<T>): Promise<T>;
   delete(id: string): Promise<{ success?: boolean; id?: string }>;
 }

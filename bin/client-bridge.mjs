@@ -29,6 +29,25 @@ export function createFunctionInvoker(auth, request = globalThis.fetch) {
   };
 }
 
+export function createLLMInvoker(auth, request = globalThis.fetch) {
+  return async (params) => {
+    const token = await auth?.getAccessToken?.();
+    const response = await request('/api/ai/invoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      const error = new Error(data.error || 'Falha na IA local.');
+      error.status = response.status;
+      error.response = { status: response.status, data };
+      throw error;
+    }
+    return data;
+  };
+}
+
 export async function ensureSession(auth, doc = globalThis.document) {
   let initialError = "";
   try { if (await auth.isAuthenticated()) return; }

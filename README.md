@@ -1,5 +1,34 @@
 # @moon/sdk
 
+## Compatibilidade com aplicativos Base44
+
+O SDK oficial incluído em `javascript-sdk-main` é uma referência de contrato.
+O Moon implementa essas chamadas com provedores próprios; ainda não existe
+compatibilidade completa com todos os recursos do Base44.
+
+- Entidades: `list`, `filter`, `get`, `create`, `update`, `delete`, `bulkCreate` e `bulkUpdate`.
+  `bulkUpdate` executa uma atualização por registro e pode concluir parcialmente se uma
+  operação falhar. `bulkCreate` depende do suporte a lotes/transações do adaptador.
+  `$ne` é traduzido para `$neq`; o cliente Supabase direto usa seus métodos nativos
+  de filtro, incluindo `IS NULL`. Operadores MongoDB avançados como `$or` e `$regex`
+  ainda não têm tradução geral para os adaptadores.
+- IA no cliente adaptado por `moon run`: `base44.integrations.Core.InvokeLLM`
+  aceita `prompt` e `response_json_schema`, retornando texto ou o objeto JSON validado.
+  Requer uma sessão verificada e a configuração de IA no backend. A chave fica no servidor.
+  Anexos e pesquisa na internet ainda não são suportados por essa adaptação.
+- O modo de banco `none` armazena dados no navegador. Sua sessão local não substitui
+  uma sessão Supabase/Firebase para acessar IA e funções autenticadas no backend.
+- `subscribe`, `deleteMany`, `updateMany`, importação de arquivos, agentes persistentes,
+  uploads e envio de e-mail ainda precisam de implementação/adaptadores específicos.
+
+Após atualizar o SDK, reinicie com `moon run ./meu-app` para gerar um novo cliente
+local. A cópia recebe explicitamente o banco e o provedor de autenticação escolhidos;
+`--no-db` também desativa o bootstrap de login nessa cópia, preservando a configuração
+original do banco. Os registros e usuários hospedados no Base44 não são migrados automaticamente.
+`moon inspect ./meu-app` ajuda a identificar algumas limitações conhecidas; não garante
+compatibilidade completa nem testa credenciais. O frontend publicado também precisa
+de um backend que atenda às rotas `/api`; o proxy do Vite só atende ao desenvolvimento.
+
 Moon é um SDK autônomo para aplicações exportadas. Ele usa contratos locais e não depende de um provedor específico ou de um runtime hospedado.
 
 O primeiro adaptador compatível é o cliente do Supabase já criado pela aplicação:
