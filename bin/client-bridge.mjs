@@ -35,7 +35,7 @@ export async function ensureSession(auth, doc = globalThis.document) {
   return new Promise(resolve => {
     const panel = doc.createElement("main");
     panel.style.cssText = "max-width:400px;margin:10vh auto;padding:28px;font-family:system-ui;background:white;color:#172033;border:1px solid #ddd;border-radius:16px";
-    panel.innerHTML = `<h1>Entre no aplicativo</h1><p>Suas notas ficam vinculadas à sua conta neste banco. O login do Base44 não é transferido automaticamente.</p><form><label>E-mail<input name="email" type="email" autocomplete="email" required style="display:block;width:95%;padding:10px;margin:8px 0 16px"></label><label>Senha<input name="password" type="password" autocomplete="current-password" required style="display:block;width:95%;padding:10px;margin:8px 0 16px"></label><button type="submit">Entrar</button> <button type="button" data-register>Criar conta</button></form><p role="status" aria-live="polite"></p>`;
+    panel.innerHTML = `<h1>Entre no aplicativo</h1><p>Seus dados ficam vinculados à sua conta neste banco. O login do Base44 não é transferido automaticamente.</p><form><label>E-mail<input name="email" type="email" autocomplete="email" required style="display:block;width:95%;padding:10px;margin:8px 0 16px"></label><label>Senha<input name="password" type="password" autocomplete="current-password" required style="display:block;width:95%;padding:10px;margin:8px 0 16px"></label><button type="submit">Entrar</button> <button type="button" data-register>Criar conta</button></form><p role="status" aria-live="polite"></p>`;
     const form = panel.querySelector("form"), status = panel.querySelector('[role="status"]');
     status.textContent = initialError;
     doc.body.appendChild(panel);

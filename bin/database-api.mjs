@@ -34,25 +34,28 @@ export async function verifyUser(token, config, env) {
 }
 
 export function authorizeQuery(payload, schema, user) {
-  const definition = Object.entries(schema.entities).find(([name]) => tableName(name) === payload.table)?.[1];
+  const definition = Object.entries(schema.entities).find(([name]) => tableName(name) === payload?.table)?.[1];
   if (!definition || !["owner", "public"].includes(definition.access)) throw new Error("Entidade indisponível para acesso pelo navegador.");
   if (!["select", "insert", "update", "delete"].includes(payload.action)) throw new Error("Operação inválida.");
-  if (definition.access === "public") {
-    if (payload.action !== "select") throw new Error("Entidade pública permite apenas leitura.");
-    return { ...payload, filters: Array.isArray(payload.filters) ? payload.filters : [], limit: payload.limit ?? 100 };
-  }
-  if (!user?.id) throw new Error("Consulta ou usuário inválido.");
   const fields = definition.fields;
   const operators = ["$eq", "$neq", "$gt", "$gte", "$lt", "$lte", "$in", "$is", "$ilike"];
-  if (!Array.isArray(payload.filters) || payload.filters.length > 20) throw new Error("Filtros inválidos.");
-  for (const filter of payload.filters) if (!Object.hasOwn(fields, filter.field) || !operators.includes(filter.operator)) throw new Error("Filtro inválido.");
+  const filters = Array.isArray(payload.filters) ? payload.filters : [];
+  if (filters.length > 20) throw new Error("Filtros inválidos.");
+  for (const filter of filters) if (!Object.hasOwn(fields, filter.field) || !operators.includes(filter.operator)) throw new Error("Filtro inválido.");
   if (payload.select && (!Array.isArray(payload.select) || payload.select.some(key => key !== "*" && !Object.hasOwn(fields, key)))) throw new Error("Projeção inválida.");
   if (payload.order && !Object.hasOwn(fields, payload.order.field)) throw new Error("Ordenação inválida.");
-  if (["update", "delete"].includes(payload.action) && !payload.filters.some(f => f.field === "id" && f.operator === "$eq" && typeof f.value === "string"))
-    throw new Error("Atualização/exclusão exige id.");
-  const request = { ...payload, filters: [...payload.filters, { field: "user_id", operator: "$eq", value: user.id }] };
   if (payload.limit != null && (!Number.isSafeInteger(payload.limit) || payload.limit < 0 || payload.limit > 1000)) throw new Error("Limite deve estar entre 0 e 1000.");
   if (payload.offset != null && (!Number.isSafeInteger(payload.offset) || payload.offset < 0 || payload.offset > 100000)) throw new Error("Offset inválido.");
+
+  if (definition.access === "public") {
+    if (payload.action !== "select") throw new Error("Entidade pública permite apenas leitura.");
+    return { ...payload, filters, limit: payload.limit ?? 100, ...(payload.offset != null ? { offset: payload.offset } : {}) };
+  }
+
+  if (!user?.id) throw new Error("Consulta ou usuário inválido.");
+  if (["update", "delete"].includes(payload.action) && !filters.some(f => f.field === "id" && f.operator === "$eq" && typeof f.value === "string"))
+    throw new Error("Atualização/exclusão exige id.");
+  const request = { ...payload, filters: [...filters, { field: "user_id", operator: "$eq", value: user.id }] };
   request.limit = payload.limit ?? 100;
   if (["insert", "update"].includes(payload.action)) {
     const records = Array.isArray(payload.values) ? payload.values : [payload.values];

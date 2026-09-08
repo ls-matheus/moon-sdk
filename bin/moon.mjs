@@ -383,6 +383,16 @@ export default defineConfig({
   const { installLoginBootstrap } = await import("./runtime-auth.mjs");
   const loginUi = installLoginBootstrap(appDir, clientPath, activeConfig.provider, activeConfig.authUi);
   print(loginUi.mode === 'app' ? '✓ Tela de login do aplicativo preservada; autenticação pelo provedor configurado.' : '✓ Aplicativo sem login próprio: usando a tela padrão do Moon.');
+  const { discoverSchema } = await import("./database-schema.mjs");
+  let publicEntities = [];
+  try {
+    const discovered = discoverSchema(projectDir)?.schema;
+    if (discovered?.entities) {
+      publicEntities = Object.entries(discovered.entities)
+        .filter(([, entity]) => entity.access === "public")
+        .map(([name]) => name);
+    }
+  } catch { /* schema discovery is advisory */ }
   writeFileSync(clientPath, `import { createBrowserClient } from "@moon/sdk";
 import { createFunctionInvoker, createLoginRedirect } from "/src/moon-client-bridge.mjs";
 
@@ -397,7 +407,7 @@ const sdk = createBrowserClient({
     authDomain: import.meta.env.VITE_MOON_FIREBASE_AUTH_DOMAIN,
     appId: import.meta.env.VITE_MOON_FIREBASE_APP_ID,
   },
-  publicEntities: ${JSON.stringify((JSON.parse(readFileSync(resolve(projectDir, "moon/schema.json"), "utf8"))?.entities ? Object.entries(JSON.parse(readFileSync(resolve(projectDir, "moon/schema.json"), "utf8")).entities).filter(([, entity]) => entity.access === "public").map(([name]) => name) : []))},
+  publicEntities: ${JSON.stringify(publicEntities)},
 });
 const auth = {
   verifyOtp: params => sdk.auth.verifyOtp({ ...params, token: params.otpCode || params.token }),

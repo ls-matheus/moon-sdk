@@ -85,3 +85,14 @@ test("importação preserva obrigatórios e fecha acesso quando há regras perso
   assert.equal(schema.entities.Admin.access, "private");
   assert.equal(schema.entities.Secret.access, "private");
 }));
+
+test("importação descobre entidades públicas por access ou permissões de leitura", () => project({
+  "base44/entities/Catalog.json": JSON.stringify({name:"Catalog", properties:{title:{type:"string"}}, access:"public"}),
+  "base44/entities/Article.json": JSON.stringify({name:"Article", properties:{slug:{type:"string"}}, permissions:{read:"public"}}),
+  "base44/entities/Product.json": JSON.stringify({name:"Product", properties:{price:{type:"number"}}, public:true}),
+}, directory => {
+  const {schema} = discoverSchema(directory);
+  assert.equal(schema.entities.Catalog.access, "public");
+  assert.equal(schema.entities.Article.access, "public");
+  assert.equal(schema.entities.Product.access, "public");
+}));

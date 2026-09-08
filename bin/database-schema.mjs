@@ -74,8 +74,14 @@ export function discoverSchema(directory) {
       fields[name] = { type, required: (entity.required || []).includes(name), ...(field.enum ? { enum: field.enum } : {}) };
     }
     // Custom authorization cannot be translated by guessing: preserve fail-closed access.
+    // Explicit public access or public read permissions mark catalog/public entities.
     // Without custom rules, the portable default is authenticated owner-only data.
-    entities[entity.name || basename(file).replace(/\.jsonc?$/, "")] = { access: Object.hasOwn(entity, "rls") || Object.hasOwn(entity, "permissions") ? "private" : "owner", fields };
+    const access = ["public", "owner", "private"].includes(entity.access)
+      ? entity.access
+      : (entity.public === true || entity.permissions?.read === "public" || entity.permissions?.read === "all"
+        ? "public"
+        : (Object.hasOwn(entity, "rls") || Object.hasOwn(entity, "permissions") ? "private" : "owner"));
+    entities[entity.name || basename(file).replace(/\.jsonc?$/, "")] = { access, fields };
   }
   return Object.keys(entities).length ? { schema: normalizeSchema({ version: 1, entities }), source: folder } : null;
 }

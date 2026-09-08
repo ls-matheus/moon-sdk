@@ -21,3 +21,13 @@ test("Firebase rejeita JWT sem assinatura antes de acessar a rede", async () => 
   const token = encode({ alg: "none" }) + "." + encode({ sub: "admin", aud: "project", exp: Date.now() / 1000 + 1000 }) + ".";
   await assert.rejects(verifyUser(token, { authProvider: "firebase" }, { MOON_FIREBASE_PROJECT_ID: "project" }), /inválido/);
 });
+
+test("backend autoriza select em entidade pública e recusa escrita ou projeção inválida", () => {
+  const publicSchema = normalizeSchema({ version: 1, entities: { Donut: { access: "public", fields: { name: { type: "string" }, price: { type: "number" } } } } });
+  const valid = authorizeQuery({ table: "donut", action: "select", filters: [{ field: "name", operator: "$eq", value: "Glazed" }], select: ["name", "price"], order: { field: "price", ascending: true } }, publicSchema, null);
+  assert.equal(valid.table, "donut");
+  assert.equal(valid.limit, 100);
+  assert.throws(() => authorizeQuery({ table: "donut", action: "insert", values: { name: "x" } }, publicSchema, null), /apenas leitura/);
+  assert.throws(() => authorizeQuery({ table: "donut", action: "select", select: ["secret_column"] }, publicSchema, null), /Projeção/);
+  assert.throws(() => authorizeQuery({ table: "donut", action: "select", filters: [{ field: "invalid_field", operator: "$eq", value: 1 }] }, publicSchema, null), /Filtro/);
+});
