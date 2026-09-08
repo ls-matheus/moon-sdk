@@ -30,7 +30,27 @@ try {
     $checksums = (Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/v$nodeVersion/SHASUMS256.txt" -TimeoutSec 60).Content
     $pattern = '(?m)^([a-fA-F0-9]{64})\s+' + [regex]::Escape($nodeFile) + '\s*$'
     $match = [regex]::Match($checksums, $pattern)
-    if (-not $match.Success -or (Get-FileHash -LiteralPath $nodeZip -Algorithm SHA256).Hash -ine $match.Groups[1].Value) {
+    function Compute-FileHash([string]$path) {
+        if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
+            return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+        try {
+            $out = & certutil -hashfile $path SHA256 2>$null
+            if ($out) {
+                $lines = $out -split "`r?`n"
+                if ($lines.Length -ge 2) { return ($lines[1] -replace '\s+','').ToLowerInvariant() }
+            }
+        } catch {}
+        # Fallback to .NET implementation
+        $stream = [IO.File]::OpenRead($path)
+        try {
+            $sha = [System.Security.Cryptography.SHA256]::Create()
+            $hashBytes = $sha.ComputeHash($stream)
+            return ([BitConverter]::ToString($hashBytes)).Replace('-','').ToLowerInvariant()
+        } finally { $stream.Close() }
+    }
+    $downloadHash = Compute-FileHash $nodeZip
+    if (-not $match.Success -or $downloadHash -ne $match.Groups[1].Value.ToLowerInvariant()) {
         throw 'Checksum do Node.js invalido.'
     }
     $releases = Join-Path $Destination 'releases'
