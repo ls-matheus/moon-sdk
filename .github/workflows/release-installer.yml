@@ -45,8 +45,13 @@ jobs:
           $destination = Join-Path $env:LOCALAPPDATA 'Programs\Moon SDK CI'
           $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
           1..2 | ForEach-Object {
-            $process = Start-Process -FilePath "$pwd\install.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $destination + '"') -WindowStyle Hidden -Wait -PassThru
-            if ($process.ExitCode -ne 0) { Get-Content "$destination\install.log" -ErrorAction SilentlyContinue; throw 'Instalacao falhou.' }
+            $setupLog = Join-Path $env:RUNNER_TEMP 'moon-setup.log'
+            $process = Start-Process -FilePath "$pwd\install.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $destination + '"'), ('/LOG="' + $setupLog + '"') -WindowStyle Hidden -Wait -PassThru
+            if ($process.ExitCode -ne 0 -or -not (Test-Path "$destination\bin\moon.cmd")) {
+              Get-Content $setupLog -ErrorAction SilentlyContinue
+              Get-Content "$destination\install.log" -ErrorAction SilentlyContinue
+              throw 'Instalacao falhou.'
+            }
             & "$destination\bin\moon.cmd" --help
             if ($LASTEXITCODE -ne 0) { throw 'Launcher falhou.' }
           }

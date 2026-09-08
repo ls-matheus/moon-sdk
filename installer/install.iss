@@ -32,7 +32,7 @@ Source: "install-user.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{group}\Desinstalar Moon SDK"; Filename: "{uninstallexe}"
 
 [UninstallRun]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-user.ps1"" -Destination ""{app}"" -Uninstall"; Flags: runhidden waituntilterminated
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-user.ps1"" -Destination ""{app}"" -Uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveMoonUserPath"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\releases"
@@ -40,11 +40,21 @@ Type: filesandordirs; Name: "{app}\bin"
 Type: files; Name: "{app}\install.log"
 
 [Code]
+var
+  InstallFailed: Boolean;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  Result := 0;
+  if InstallFailed then Result := 1;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ExitCode: Integer;
 begin
   if CurStep = ssPostInstall then begin
+    InstallFailed := True;
     WizardForm.StatusLabel.Caption := 'Instalando Node portatil e Moon para seu usuario...';
     if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
       ExpandConstant('-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{app}\install-user.ps1" -Destination "{app}" -Commit "{#MoonCommit}"'),
@@ -52,5 +62,8 @@ begin
       RaiseException('Nao foi possivel iniciar a instalacao.');
     if ExitCode <> 0 then
       RaiseException(ExpandConstant('Instalacao falhou. Consulte {app}\install.log e execute o instalador novamente.'));
+    if not FileExists(ExpandConstant('{app}\bin\moon.cmd')) then
+      RaiseException('O launcher Moon nao foi criado.');
+    InstallFailed := False;
   end;
 end;
