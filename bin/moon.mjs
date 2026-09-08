@@ -8,6 +8,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
 import { withRuntimeAliases } from "./runtime-env.mjs";
+import { importNetworkEnv } from "./import-network.mjs";
 
 const command = process.argv[2] || "help";
 const subcommand = command === "sync" || command === "db" && ["diff", "migrate"].includes(process.argv[3]) ? process.argv[3] : null;
@@ -576,12 +577,15 @@ function npm(script, cwd = projectDir) {
 
 function importFromPlatform(args) {
   print("\nModo de importação temporário: a autenticação e o download são feitos pelo conector oficial.");
-  print(`Iniciando conector oficial: ${npxCommand} --yes base44 ${args.join(" ")}`);
-  let result = spawnSync(npxCommand, ["--yes", "base44", ...args], { cwd: projectDir, stdio: "inherit", shell: windows });
-  if (result.error?.code === "ENOENT") {
-    print("npx não encontrado; tentando o CLI oficial instalado globalmente...");
-    result = spawnSync(platformCommand, args, { cwd: projectDir, stdio: "inherit", shell: windows });
-  }
+  const installed = spawnSync(platformCommand, ["--version"], { cwd: projectDir, stdio: "ignore", shell: windows, timeout: 10000 });
+  const executable = installed.status === 0 ? platformCommand : npxCommand;
+  const commandArgs = installed.status === 0 ? args : ["--yes", "base44", ...args];
+  if (installed.status !== 0) print("Preparando o CLI oficial via npm. O primeiro uso precisa baixar dependências; falhas de rede serão exibidas.");
+  print(`Iniciando conector oficial: ${executable} ${commandArgs.join(" ")}`);
+  const result = spawnSync(executable, commandArgs, {
+    cwd: projectDir, stdio: "inherit", shell: windows,
+    env: importNetworkEnv(),
+  });
   if (result.error) console.error(`Não foi possível iniciar o conector oficial: ${result.error.message}`);
   if (result.status == null && !result.error) console.error("O conector oficial foi encerrado sem retornar resultado.");
   if (result.status !== 0 && result.status != null) console.error(`O conector oficial encerrou com código ${result.status}.`);
