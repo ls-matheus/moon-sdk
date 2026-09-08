@@ -23,8 +23,8 @@ cp installer/pkg-scripts/postinstall installer/pkg-scripts/install-runtime.sh "$
 # Materialize the SDK from the lockfile instead of resolving semver on the user's Mac.
 sdk="$work/payload/lib/node_modules/@moon/sdk"
 mkdir -p "$sdk"
-cp package.json package-lock.json README.md DATABASES.md SYNC.md "$sdk/"
-cp -R bin dist "$sdk/"
+cp package.json package-lock.json README.md LICENSE "$sdk/"
+cp -R bin dist assets docs "$sdk/"
 npm ci --prefix "$sdk" --omit=dev --ignore-scripts --no-audit --no-fund
 npm install --global --prefix "$work/payload" --ignore-scripts --no-audit --no-fund @base44/sdk@0.8.48
 if find "$work/payload" -name '*.node' -print | /usr/bin/grep -q .; then

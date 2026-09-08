@@ -1,7 +1,27 @@
 {
   "name": "@moon/sdk",
   "version": "0.2.0",
-  "description": "Moon SDK for portable applications",
+  "description": "TypeScript SDK and CLI for portable applications with independent backends.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ls-matheus/moon-sdk.git"
+  },
+  "homepage": "https://github.com/ls-matheus/moon-sdk#documentation",
+  "bugs": {
+    "url": "https://github.com/ls-matheus/moon-sdk/issues"
+  },
+  "keywords": [
+    "typescript",
+    "sdk",
+    "cli",
+    "developer-tools",
+    "base44",
+    "supabase",
+    "firebase",
+    "postgresql",
+    "mysql"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,8 +31,8 @@
   "files": [
     "dist",
     "bin",
-    "DATABASES.md",
-    "SYNC.md"
+    "assets",
+    "docs"
   ],
   "scripts": {
     "build": "tsc",

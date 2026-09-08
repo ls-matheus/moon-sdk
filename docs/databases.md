@@ -76,7 +76,7 @@ sem registro Moon e alterações de schema são bloqueadas para evitar perda de
 dados: migração e backfill precisam de revisão, não são executados silenciosamente.
 `moon db diff` compara `moon/schema.proposed.json` com o schema aceito;
 `moon db migrate --apply` aplica apenas migrações aditivas suportadas após revisão.
-Consulte [SYNC.md](SYNC.md) para limites por provedor e proteção do contrato.
+Consulte o [guia de sincronização](./sync.md) para limites por provedor e proteção do contrato.
 
 Há validação de leitura/gravação administrativa em uma tabela/documento de teste.
 Isso não certifica OAuth, e-mail, regras personalizadas ou todas as consultas do
