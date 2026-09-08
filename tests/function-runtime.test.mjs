@@ -4,7 +4,7 @@ import { compileFunction, runFunctionSource } from "../bin/function-runtime.mjs"
 import { createFunctionInvoker, ensureSession } from "../bin/client-bridge.mjs";
 import { installLoginBootstrap } from "../bin/runtime-auth.mjs";
 import { invokeLLM } from "../bin/structured-ai.mjs";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveFunctionEntry } from '../bin/function-entries.mjs';
@@ -139,7 +139,8 @@ test('Deno.serve é adaptado sem expor ambiente, e formatos ambíguos são recus
     mkdirSync(join(dir, 'functions'));
     mkdirSync(join(dir, 'base44/functions/echo'), { recursive: true });
     writeFileSync(join(dir, 'functions/echo.ts'), 'export default ()=>Response.json({});');
-    assert.equal(resolveFunctionEntry(dir, 'echo'), join(dir, 'functions/echo.ts'));
+    // macOS temp directories can use /var, which resolves to /private/var.
+    assert.equal(resolveFunctionEntry(dir, 'echo'), realpathSync(join(dir, 'functions/echo.ts')));
     assert.throws(() => resolveFunctionEntry(dir, '../echo'), /inválido/);
     writeFileSync(join(dir, 'base44/functions/echo/entry.ts'), 'export default ()=>Response.json({});');
     assert.throws(() => resolveFunctionEntry(dir, 'echo'), /ambígua/);
