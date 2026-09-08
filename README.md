@@ -1,119 +1,88 @@
-# @moon/sdk
+<p align="center">
+  <img src="./assets/moon-sdk-banner.png" alt="Moon SDK — purple moon and stars" width="100%">
+</p>
 
-## Compatibilidade com aplicativos Base44
+<p align="center">
+  <strong>A TypeScript SDK and CLI for portable applications.</strong>
+</p>
 
-O contrato extraído do SDK oficial 0.8.48 está em `bin/base44-reference.json`.
-O Moon implementa essas chamadas com provedores próprios; ainda não existe
-compatibilidade completa com todos os recursos do Base44.
-Veja [COMPATIBILITY.md](COMPATIBILITY.md) para cobertura, adaptadores e limites.
+<p align="center">
+  <a href="https://github.com/ls-matheus/moon-sdk/actions/workflows/release-installer.yml"><img src="https://github.com/ls-matheus/moon-sdk/actions/workflows/release-installer.yml/badge.svg?branch=main" alt="Build and publish installers"></a>
+  <a href="./tsconfig.json"><img src="https://img.shields.io/badge/TypeScript-5.9.3-3178C6" alt="TypeScript 5.9.3"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-7C3AED" alt="MIT License"></a>
+</p>
 
-- Entidades: `list`, `filter`, `get`, `create`, `update`, `delete`, `bulkCreate` e `bulkUpdate`.
-  `bulkUpdate` executa uma atualização por registro e pode concluir parcialmente se uma
-  operação falhar. `bulkCreate` depende do suporte a lotes/transações do adaptador.
-  `$ne` é traduzido para `$neq`; o cliente Supabase direto usa seus métodos nativos
-  de filtro, incluindo `IS NULL`. Operadores MongoDB avançados como `$or` e `$regex`
-  ainda não têm tradução geral para os adaptadores.
-- IA no cliente adaptado por `moon run`: `base44.integrations.Core.InvokeLLM`
-  aceita `prompt` e `response_json_schema`, retornando texto ou o objeto JSON validado.
-  Requer uma sessão verificada e a configuração de IA no backend. A chave fica no servidor.
-  Anexos e pesquisa na internet ainda não são suportados por essa adaptação.
-- O modo de banco `none` armazena dados no navegador. Sua sessão local não substitui
-  uma sessão Supabase/Firebase para acessar IA e funções autenticadas no backend.
-- `subscribe`, `deleteMany`, `updateMany`, importação de arquivos, agentes persistentes,
-  uploads e envio de e-mail ainda precisam de implementação/adaptadores específicos.
+Moon helps run exported Base44 applications with independent backends: Supabase,
+Firebase, PostgreSQL or MySQL. It provides a familiar entity API and a CLI for
+database setup, local development and Git synchronization.
 
-Após atualizar o SDK, reinicie com `moon run ./meu-app` para gerar um novo cliente
-local. A cópia recebe explicitamente o banco e o provedor de autenticação escolhidos;
-`--no-db` também desativa o bootstrap de login nessa cópia, preservando a configuração
-original do banco. Os registros e usuários hospedados no Base44 não são migrados automaticamente.
-`moon inspect ./meu-app` ajuda a identificar algumas limitações conhecidas; não garante
-compatibilidade completa nem testa credenciais. O frontend publicado também precisa
-de um backend que atenda às rotas `/api`; o proxy do Vite só atende ao desenvolvimento.
+Compatibility is still being expanded. Platform-specific services need local
+adapters, and existing Base44 data and accounts are not migrated automatically.
 
-Moon é um SDK autônomo para aplicações exportadas. Ele usa contratos locais e não depende de um provedor específico ou de um runtime hospedado.
+## Installation
 
-O primeiro adaptador compatível é o cliente do Supabase já criado pela aplicação:
-
-```js
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { createClient } from '@moon/sdk';
-
-const supabase = createSupabaseClient(url, anonKey);
-const sdk = createClient(supabase);
-
-const notes = await sdk.entities.Notes.list('-updated_at', 200);
-await sdk.entities.Notes.create({ title: 'Olá' });
-```
-
-A API de entidades traduz `Notes` para a tabela `notes`. A segurança continua no banco, via RLS. Serviços exclusivos de uma plataforma hospedada devem ser implementados como adaptadores locais (por exemplo, Supabase Edge Functions), sem serem chamados diretamente pelo SDK.
-
-## Adaptadores e dicionários
-
-O núcleo não importa drivers de banco. O projeto fornece tradutores para:
-
-- `createSupabaseAdapter`: cliente relacional com RLS;
-- `createFirebaseAdapter`: Firestore, com coleções e documentos;
-- `createSqlAdapter`: PostgreSQL, MySQL ou SQL genérico, usando um executor de backend.
-
-Os dicionários exportados em `src/dictionaries.ts` traduzem nomes de tabelas/campos, operadores (`$eq`, `$gt`, `$in` etc.), aspas de identificadores e placeholders (`$1`, `?`, `@p1`). Novos bancos podem ser adicionados sem mudar a API das aplicações.
-
-Exemplo SQL no backend:
-
-```ts
-const database = createSqlAdapter({
-  query: (text, parameters) => pool.query(text, parameters),
-}, 'postgres');
-const app = createClient(database);
-```
-
-Nunca exponha `pool`, senha ou chave administrativa no frontend. O navegador deve usar um adaptador público com as regras de segurança do próprio banco.
-
-## Interface de terminal
-
-O SDK é único e detecta automaticamente Windows e macOS. O `install.exe` prepara o ambiente visualmente no Windows; depois da instalação, o comando `moon` é disponibilizado automaticamente pelo npm.
-
-Depois de instalar o pacote, a configuração é totalmente local:
+Requires Node.js 22 and npm. Install directly from GitHub:
 
 ```bash
-moon init ./meu-app
-moon link ./meu-app
-moon doctor ./meu-app
-moon test ./meu-app
-moon build
-moon start ./meu-app
-moon run ./meu-app
+npm install github:ls-matheus/moon-sdk
 ```
 
-Para validar o próprio SDK antes de publicar, use `npm run check` e
-`npm run audit`. O primeiro executa typecheck, build e a suíte de testes; o
-segundo bloqueia vulnerabilidades altas ou críticas nas dependências travadas.
+The package name is `@moon/sdk`; it is not currently published on the npm registry.
+Prebuilt Windows and macOS installers are available in [Releases](https://github.com/ls-matheus/moon-sdk/releases).
 
-O comando `link` pergunta o banco, grava `moon.config.json`, as variáveis específicas em `.env.local` e testa a conexão antes de concluir. `test` repete a verificação sem reconfigurar. `start` executa a preparação e inicia o app local. A CLI não possui fluxo de conta, publicação, exportação ou conexão com uma plataforma externa.
+## Quick Start
 
-`run` é o comando universal: detecta banco por arquivos `.env`, dependências e código do projeto; reutiliza a configuração encontrada ou chama `link` quando não houver banco. Também analisa o código para detectar chatbot/LLM e só pergunta pela API de IA quando encontra esse recurso. Depois sobe o backend local em `http://localhost:8787` junto com o frontend definido no `package.json`. A chave de IA fica em `.env.local` e o backend só informa se ela existe; nunca entrega o segredo por uma rota HTTP.
+Try the entity API with an in-memory database:
 
-Os instaladores são gerados a partir de commits imutáveis: o `install.exe`
-embute o commit que disparou o build e o pacote macOS usa Node.js 22.23.2,
-com hashes verificados.
+```ts
+import { createClient, createMemoryAdapter } from '@moon/sdk';
 
-O wizard é específico para cada opção: Supabase solicita URL e chave pública e valida uma chamada autenticada; Firebase solicita o Web App config e valida o projeto; PostgreSQL, MySQL e SQL solicitam uma connection string e validam host/porta, sendo marcados como backend-only. Segredos ficam somente no `.env.local` e nunca são gravados no JSON.
-# Configurar o banco pelo terminal
+const moon = createClient(createMemoryAdapter());
 
-Na pasta do aplicativo, execute `moon db .`, escolha o serviço e informe os acessos.
-O SDK descobre a estrutura nas definições exportadas ou nas gravações JavaScript/TypeScript
-do aplicativo: não pede tabelas, campos ou tipos ao usuário. Cria `moon/schema.json`,
-gera o plano do provedor escolhido e, após confirmação, aplica e testa a estrutura.
-Quando o código não permite identificar a estrutura com segurança, interrompe antes
-de alterar o banco e informa o ponto que precisa de revisão técnica.
-Depois execute `moon run .`. Para gerar apenas o plano, use `moon db . --plan`.
-Veja [DATABASES.md](DATABASES.md) para bancos suportados, credenciais e limites de migração/autenticação.
+await moon.entities.Note.create({ title: 'Hello, Moon' });
+const notes = await moon.entities.Note.list('-created_date');
 
-## Editar no Base44 e localmente
+console.log(notes);
+```
 
-`moon sync init` gera o contrato por projeto; `moon sync push/pull` sincroniza os
-commits pela `main`, bloqueando alterações nos arquivos protegidos, históricos
-divergentes e arquivos sensíveis. O proprietário precisa ativar previamente a
-integração bidirecional Base44/GitHub. O código compartilhado mantém o cliente
-Base44; `moon run` adapta uma cópia local ignorada pelo Git. Registros dos bancos
-não são sincronizados. Veja [SYNC.md](SYNC.md) para configuração, comandos,
-migrações aditivas e limites de proteção.
+This example keeps data only for the current session. For persistent storage,
+follow the [database setup guide](./docs/databases.md).
+
+From your exported application's directory:
+
+```bash
+npx moon inspect .
+npx moon db .
+npx moon run .
+```
+
+`inspect` checks known compatibility limits, `db` configures your database and
+`run` starts the local backend and frontend.
+
+## Documentation
+
+- [Base44 compatibility and local adapters](./docs/compatibility.md)
+- [Database setup and adapters](./docs/databases.md)
+- [Synchronization with Base44 and GitHub](./docs/sync.md)
+- [Building the Windows installer](./installer/BUILD-WINDOWS.md)
+- [Building the macOS installer](./installer/BUILD-MACOS.md)
+
+## Development
+
+```bash
+git clone https://github.com/ls-matheus/moon-sdk.git
+cd moon-sdk
+npm ci
+npm run check
+npm run audit
+```
+
+`npm run check` runs type checking, the build and tests. Use `npm run build` to
+rebuild on its own. Tests against external databases require configured services.
+
+`dist/` is versioned because Git installations, the CLI and installers load its
+compiled entry points.
+
+## License
+
+[MIT](./LICENSE) © 2026 ls-matheus.
