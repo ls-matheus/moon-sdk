@@ -8,16 +8,23 @@ export * from "./dictionaries.js";
 export * from "./adapters.js";
 export * from "./browser.js";
 
+const canonicalField = (field: string) => field === "created_date" ? "created_at" : field === "updated_date" ? "updated_at" : field;
+
 function unwrap<T>(query: EntityQuery<T>): Promise<T[]> {
   return query.then(({ data, error }) => {
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []).map(row => {
+      if (!row || typeof row !== "object") return row;
+      const record = row as Record<string, unknown>;
+      return { ...record, ...(record.created_at !== undefined ? { created_date: record.created_at } : {}), ...(record.updated_at !== undefined ? { updated_date: record.updated_at } : {}) } as T;
+    });
   });
 }
 
 function applyFilter<T>(query: EntityQuery<T>, filter: EntityFilter): EntityQuery<T> {
   let result = query;
-  for (const [column, value] of Object.entries(filter)) {
+  for (const [name, value] of Object.entries(filter)) {
+    const column = canonicalField(name);
     if (value && typeof value === "object" && !Array.isArray(value)) {
       for (const [operator, operand] of Object.entries(value)) {
         if (operator === "$eq") result = result.eq(column, operand);
@@ -33,18 +40,18 @@ function applyFilter<T>(query: EntityQuery<T>, filter: EntityFilter): EntityQuer
 }
 
 function makeEntity<T>(db: DatabaseAdapter, table: string): EntityHandler<T> {
-  const query = (fields?: (keyof T)[]) => db.from<T>(table).select(fields?.join(",") || "*");
+  const query = (fields?: (keyof T)[]) => db.from<T>(table).select(fields?.map(field => canonicalField(String(field))).join(",") || "*");
   return {
     async list(sort, limit, skip, fields) {
       let request = query(fields);
-      if (sort) request = request.order(sort.replace(/^-/, ""), { ascending: !sort.startsWith("-") });
+      if (sort) request = request.order(canonicalField(sort.replace(/^-/, "")), { ascending: !sort.startsWith("-") });
       if (limit != null) request = request.limit(limit);
       if (skip != null) request = request.range(skip, skip + (limit ?? 1000) - 1);
       return unwrap(request) as Promise<Partial<T>[]>;
     },
     async filter(filter, sort, limit, skip, fields) {
       let request = applyFilter(query(fields), filter);
-      if (sort) request = request.order(sort.replace(/^-/, ""), { ascending: !sort.startsWith("-") });
+      if (sort) request = request.order(canonicalField(sort.replace(/^-/, "")), { ascending: !sort.startsWith("-") });
       if (limit != null) request = request.limit(limit);
       if (skip != null) request = request.range(skip, skip + (limit ?? 1000) - 1);
       return unwrap(request) as Promise<Partial<T>[]>;

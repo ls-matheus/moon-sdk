@@ -48,6 +48,7 @@ function startSpinner(message) {
 }
 
 function help() {
+  print("  inspect [pasta]    análise local de compatibilidade, sem alterar arquivos");
   print("  db [pasta]         assistente de criação e validação do banco (--plan apenas gera o plano)");
   print("Moon SDK — ferramentas locais");
   print("\nComandos:");
@@ -272,8 +273,10 @@ async function runLocalProcesses() {
   const network = process.argv.includes("--network");
   const backendPort = Number(process.env.MOON_BACKEND_PORT || 8787);
   const frontendPort = Number(process.env.MOON_FRONTEND_PORT || 5173);
-  releasePort(backendPort);
-  releasePort(frontendPort);
+  const { ensurePortAvailable } = await import("./runtime-ports.mjs");
+  await ensurePortAvailable(backendPort);
+  await ensurePortAvailable(frontendPort, network ? "0.0.0.0" : "127.0.0.1");
+  process.env.MOON_NETWORK = String(network);
   const serverPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "local-server.mjs");
   let frontendDir = findRunnableProject(projectDir);
   if (frontendDir) {
@@ -299,25 +302,6 @@ async function runLocalProcesses() {
   print(`Backend local: http://localhost:${backendPort}`);
   if (frontend) print(`Frontend ${network ? "na rede: use o IP do computador na porta 5173" : "local: confira o endereço mostrado pelo Vite"} (projeto: ${frontendDir})`);
   else print("Frontend local: nenhum script dev encontrado");
-}
-
-function releasePort(port) {
-  if (!Number.isInteger(port) || port < 1 || port > 65535) return;
-  const pids = new Set();
-  if (windows) {
-    const result = spawnSync("netstat.exe", ["-ano", "-p", "tcp"], { encoding: "utf8" });
-    for (const line of result.stdout?.split(/\r?\n/) || []) {
-      if (new RegExp(`:${port}\\s+.*LISTENING\\s+(\\d+)`, "i").test(line)) pids.add(line.trim().split(/\s+/).pop());
-    }
-  } else {
-    const result = spawnSync("lsof", ["-tiTCP:" + port, "-sTCP:LISTEN"], { encoding: "utf8" });
-    for (const pid of result.stdout?.split(/\s+/) || []) if (/^\d+$/.test(pid)) pids.add(pid);
-  }
-  for (const pid of pids) {
-    if (windows) spawnSync("taskkill.exe", ["/PID", pid, "/T", "/F"], { stdio: "ignore" });
-    else spawnSync("kill", ["-KILL", pid], { stdio: "ignore" });
-    print(`✓ Processo anterior encerrado na porta ${port} (PID ${pid})`);
-  }
 }
 
 function stopProcessTree(child) {
@@ -430,9 +414,9 @@ export const base44 = {
   entities: sdk.entities,
   functions: { invoke: createFunctionInvoker(sdk.auth) },
   agents: {
-    createConversation: async () => ({ id: crypto.randomUUID(), messages: [] }),
+    createConversation: async () => { throw new Error("Agentes Base44 ainda não têm adaptação local com persistência. Execute moon inspect."); },
     addMessage: async (conversation, message) => { const response = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (await sdk.auth.getAccessToken() || "") }, body: JSON.stringify({ messages: [...(conversation.messages || []), message] }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Falha ao consultar a IA."); const reply = { role: "assistant", content: data.content }; conversation.messages = [...(conversation.messages || []), message, reply]; return conversation; },
-    subscribeToConversation: (id, callback) => { void id; void callback; return () => {}; },
+    subscribeToConversation: () => { throw new Error("Assinatura de conversas Base44 não suportada localmente."); },
   },
 };
 `);
@@ -713,6 +697,11 @@ else if (command === "init" || command === "config" || command === "link") await
 else if (command === "login") importFromPlatform(["login"]);
 else if (command === "eject") importFromPlatform(["eject"]);
 else if (command === "doctor") doctor();
+else if (command === "inspect") {
+  const { inspectProject, printInspection } = await import("./project-inspect.mjs");
+  const report = inspectProject(projectDir); printInspection(report, print);
+  if (report.errors.length) process.exitCode = 1;
+}
 else if (command === "sync") {
   const { syncProject } = await import("./project-sync.mjs");
   syncProject(projectDir, subcommand, print, { refreshLocal: process.argv.includes("--refresh-local") });
@@ -734,6 +723,10 @@ else if (command === "start") {
   else await configure({ startAfter: true });
 }
 else if (command === "run") {
+  const { inspectProject, printInspection } = await import("./project-inspect.mjs");
+  const inspection = inspectProject(projectDir);
+  printInspection(inspection, print);
+  if (inspection.errors.length) throw new Error("Resolva os erros de compatibilidade acima antes de iniciar. Nenhum banco foi alterado.");
   const { validateSyncIfPresent } = await import("./project-sync.mjs");
   validateSyncIfPresent(projectDir);
   if (noDatabase) {
@@ -755,11 +748,7 @@ else if (command === "run") {
     await setupDatabase();
   }
   let connected = await testConfigured();
-  if (!connected && input.isTTY && output.isTTY) {
-    print("\nA configuração atual não funcionou. Vamos configurar o banco novamente.");
-    await configure({ startAfter: false });
-    connected = await testConfigured();
-  }
+  if (!connected) print("Configuração preservada. Confira o serviço/rede e tente novamente. Para alterar a conexão, execute moon db .");
   if (connected) {
     const activeConfig = readConfig();
     writeEnvValues(withRuntimeAliases(activeConfig.provider, { ...readEnvValues(activeConfig.env || []), VITE_MOON_PROVIDER: activeConfig.provider, VITE_MOON_DEV_AUTH_BYPASS: activeConfig.provider === "none" ? "true" : "false" }));

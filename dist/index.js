@@ -1,16 +1,23 @@
 export * from "./dictionaries.js";
 export * from "./adapters.js";
 export * from "./browser.js";
+const canonicalField = (field) => field === "created_date" ? "created_at" : field === "updated_date" ? "updated_at" : field;
 function unwrap(query) {
     return query.then(({ data, error }) => {
         if (error)
             throw error;
-        return data ?? [];
+        return (data ?? []).map(row => {
+            if (!row || typeof row !== "object")
+                return row;
+            const record = row;
+            return { ...record, ...(record.created_at !== undefined ? { created_date: record.created_at } : {}), ...(record.updated_at !== undefined ? { updated_date: record.updated_at } : {}) };
+        });
     });
 }
 function applyFilter(query, filter) {
     let result = query;
-    for (const [column, value] of Object.entries(filter)) {
+    for (const [name, value] of Object.entries(filter)) {
+        const column = canonicalField(name);
         if (value && typeof value === "object" && !Array.isArray(value)) {
             for (const [operator, operand] of Object.entries(value)) {
                 if (operator === "$eq")
@@ -30,12 +37,12 @@ function applyFilter(query, filter) {
     return result;
 }
 function makeEntity(db, table) {
-    const query = (fields) => db.from(table).select(fields?.join(",") || "*");
+    const query = (fields) => db.from(table).select(fields?.map(field => canonicalField(String(field))).join(",") || "*");
     return {
         async list(sort, limit, skip, fields) {
             let request = query(fields);
             if (sort)
-                request = request.order(sort.replace(/^-/, ""), { ascending: !sort.startsWith("-") });
+                request = request.order(canonicalField(sort.replace(/^-/, "")), { ascending: !sort.startsWith("-") });
             if (limit != null)
                 request = request.limit(limit);
             if (skip != null)
@@ -45,7 +52,7 @@ function makeEntity(db, table) {
         async filter(filter, sort, limit, skip, fields) {
             let request = applyFilter(query(fields), filter);
             if (sort)
-                request = request.order(sort.replace(/^-/, ""), { ascending: !sort.startsWith("-") });
+                request = request.order(canonicalField(sort.replace(/^-/, "")), { ascending: !sort.startsWith("-") });
             if (limit != null)
                 request = request.limit(limit);
             if (skip != null)

@@ -31,3 +31,16 @@ test("backend autoriza select em entidade pública e recusa escrita ou projeçã
   assert.throws(() => authorizeQuery({ table: "donut", action: "select", select: ["secret_column"] }, publicSchema, null), /Projeção/);
   assert.throws(() => authorizeQuery({ table: "donut", action: "select", filters: [{ field: "invalid_field", operator: "$eq", value: 1 }] }, publicSchema, null), /Filtro/);
 });
+
+test("função só recebe privilégio explícito e proprietário nunca perde o filtro", () => {
+  const privateSchema = normalizeSchema({ version: 1, entities: {
+    Note: { access: "owner", fields: { title: { type: "string", required: true } } },
+    Audit: { access: "private", fields: { event: { type: "string", required: true } } },
+  } });
+  assert.throws(() => authorizeQuery({ table: "audit", action: "select", filters: [] }, privateSchema, { id: "u" }), /indisponível/);
+  const audit = authorizeQuery({ table: "audit", action: "insert", filters: [], values: { event: "ok" } }, privateSchema, { id: "u" }, { functionGrants: { Audit: ["insert"] } });
+  assert.equal(audit.values[0].event, "ok");
+  const note = authorizeQuery({ table: "note", action: "select", filters: [], values: null }, privateSchema, { id: "u" }, { functionGrants: { Note: ["select"] } });
+  assert.deepEqual(note.filters.at(-1), { field: "user_id", operator: "$eq", value: "u" });
+  assert.throws(() => authorizeQuery({ table: "note", action: "insert", filters: [], values: { title: "x", user_id: "other" } }, privateSchema, { id: "u" }, { functionGrants: { Note: ["insert"] } }), /reservado/);
+});

@@ -11,9 +11,8 @@ export function createLoginRedirect(policy, location = globalThis.location) {
 
 export function createFunctionInvoker(auth, request = globalThis.fetch) {
   return async (name, payload = {}) => {
-    if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error("Nome de função não suportado.");
-    let token = null;
-    try { token = await auth?.getAccessToken?.(); } catch {}
+    if (!/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(name)) throw new Error("Nome de função não suportado.");
+    const token = await auth?.getAccessToken?.();
     const headers = { "Content-Type": "application/json" };
     if (token) headers.Authorization = "Bearer " + token;
     const response = await request("/api/functions/" + encodeURIComponent(name), {

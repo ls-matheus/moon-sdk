@@ -71,7 +71,6 @@ export function createBrowserClient(options: BrowserOptions) {
       const publicTable = options.publicEntities?.some(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`) === request.table);
       const user = publicTable ? null : (await auth.getUser()).user;
       if (!user && !publicTable) {
-        if (request.action === "select") return { rows: [] as T[] };
         throw new Error("Login necessário.");
       }
       if (publicTable) {
@@ -112,7 +111,6 @@ export function createBrowserClient(options: BrowserOptions) {
       const publicTable = options.publicEntities?.some(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`) === request.table);
       const session = (await auth.getSession()).session;
       if (!session && !publicTable) {
-        if (request.action === "select") return { rows: [] as T[] };
         throw new Error("Login necessário.");
       }
       if (publicTable && request.action !== "select") throw new Error("Entidade pública permite apenas leitura.");

@@ -1,69 +1,11 @@
-import { existsSync, readFileSync, realpathSync, lstatSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { Worker } from "node:worker_threads";
-import ts from "typescript";
+import { compileFunction } from "./function-compiler.mjs";
+export { compileFunction } from "./function-compiler.mjs";
+import { invokeLLM } from "./structured-ai.mjs";
 import { verifyUser, queryDatabase } from "./database-api.mjs";
 import { createClient, createAdapter } from "../dist/index.js";
-
-export function compileFunction(source, entryPath = null, projectDir = null) {
-  if (source.length > 200000) throw new Error("Função excede o limite do executor local.");
-  const parsed = ts.createSourceFile("entry.ts", source, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS);
-  if (parsed.parseDiagnostics.length) throw new Error("Função contém erros de sintaxe.");
-  let sdkImport = "";
-  const relativeImports = [];
-  function visit(node) {
-    if (ts.isImportDeclaration(node)) {
-      const name = node.moduleSpecifier.text;
-      if (/^(?:npm:)?@base44\/sdk(?:@[0-9.]+)?$/.test(name)) {
-        if (sdkImport && sdkImport !== name) throw new Error("Imports múltiplos do SDK Base44 não suportados.");
-        sdkImport = name;
-      } else if (name.startsWith(".")) {
-        relativeImports.push(name);
-      } else {
-        throw new Error("Esta função usa dependências externas ainda não suportadas localmente: " + name);
-      }
-    }
-    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) throw new Error("Imports dinâmicos não são suportados na função local.");
-    ts.forEachChild(node, visit);
-  }
-  visit(parsed);
-  if (!sdkImport) throw new Error("Função sem createClientFromRequest não suportada neste executor.");
-  const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-
-  const modules = {};
-  if (entryPath && projectDir && relativeImports.length) {
-    const entryDir = resolve(entryPath, "..");
-    const realProject = realpathSync(projectDir);
-    const queue = relativeImports.map(spec => ({ spec, fromDir: entryDir }));
-    const visited = new Set();
-    while (queue.length > 0) {
-      const { spec, fromDir } = queue.shift();
-      if (visited.has(spec)) continue;
-      visited.add(spec);
-      let targetPath = resolve(fromDir, spec);
-      const candidates = [targetPath, targetPath + ".ts", targetPath + ".js", targetPath + ".mjs", resolve(targetPath, "index.ts"), resolve(targetPath, "index.js")];
-      const found = candidates.find(p => existsSync(p) && !lstatSync(p).isDirectory());
-      if (!found || !realpathSync(found).startsWith(realProject + sep)) {
-        throw new Error("Módulo relativo não encontrado ou fora do projeto: " + spec);
-      }
-      const modSource = readFileSync(found, "utf8");
-      const modCode = ts.transpileModule(modSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
-      modules[spec] = modCode;
-      const parsedMod = ts.createSourceFile("sub.ts", modSource, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS);
-      const modDir = resolve(found, "..");
-      function visitSub(node) {
-        if (ts.isImportDeclaration(node)) {
-          const subName = node.moduleSpecifier.text;
-          if (subName.startsWith(".")) queue.push({ spec: subName, fromDir: modDir });
-        }
-        ts.forEachChild(node, visitSub);
-      }
-      visitSub(parsedMod);
-    }
-  }
-
-  return { code, sdkImport, modules };
-}
 
 export function runFunctionSource(source, payload, user, invoke, timeout = 90000, entryPath = null, projectDir = null) {
   const compiled = compileFunction(source, entryPath, projectDir);
@@ -99,60 +41,35 @@ export function runFunctionSource(source, payload, user, invoke, timeout = 90000
 }
 
 export async function invokeLocalFunction(name, payload, token, config, env, directory, askAi) {
-  if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error("Nome de função inválido.");
-  let user = null;
-  if (token) {
-    try { user = await verifyUser(token, config, env); }
-    catch { user = null; }
+  if (!/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(name)) throw new Error("Nome de função inválido.");
+  const policy = config.localFunctions?.[name] || {};
+  if (policy.access && !['public', 'authenticated'].includes(policy.access)) throw new Error('Permissão de função inválida.');
+  const user = token ? await verifyUser(token, config, env) : null;
+  if (!user && policy.access !== 'public') {
+    const error = new Error('Entre na sua conta para usar esta função.'); error.status = 401; error.publicMessage = error.message; throw error;
   }
   if (!["supabase", "postgres", "mysql"].includes(config.provider)) throw new Error("Funções locais com dados suportam Supabase, PostgreSQL e MySQL nesta versão.");
   const folder = resolve(directory, "base44/functions");
   const entry = ["entry.ts", "entry.js"].map(file => resolve(folder, name, file)).find(existsSync);
   if (!entry || !realpathSync(entry).startsWith(realpathSync(folder) + sep)) throw new Error("Função não encontrada no projeto.");
   const source = readFileSync(entry, "utf8");
-  const client = createClient(createAdapter({
+  const makeClient = functionGrants => createClient(createAdapter({
     provider: config.provider,
     auth: { getUser: async () => ({ user }) },
-    execute: request => queryDatabase(request, token, config, env, directory, { asServiceRole: true, user })
+    execute: request => queryDatabase(request, token, config, env, directory, { functionGrants })
   }));
+  const client = makeClient(undefined), serviceClient = makeClient(policy.entities);
   let llmCalls = 0;
   return runFunctionSource(source, payload, user, async (method, args) => {
     if (method === "entity") {
       if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(args.entity) || !["list", "filter", "get", "create", "update", "delete"].includes(args.method) || !Array.isArray(args.args) || args.args.length > 5) throw new Error("Consulta de função não suportada.");
-      return client.entities[args.entity][args.method](...args.args);
+      try { return await (args.serviceRole ? serviceClient : client).entities[args.entity][args.method](...args.args); }
+      catch (error) { error.publicMessage = 'Operação de dados recusada. Confira login, campos e permissões desta função.'; throw error; }
     }
     if (method === "llm") {
+      if (!user && policy.allowAI !== true) throw new Error('IA pública precisa de allowAI na configuração desta função.');
       if (++llmCalls > 5 || typeof args?.prompt !== "string" || args.prompt.length > 100000) throw new Error("Parâmetros de IA não suportados.");
-      let promptText = args.prompt;
-      if (args.response_json_schema) {
-        promptText += "\n\nO JSON gerado DEVE seguir rigorosamente este JSON Schema:\n" + JSON.stringify(args.response_json_schema) + "\n\nRetorne EXCLUSIVAMENTE o JSON estruturado correspondente ao schema solicitado, sem blocos de código markdown (sem ```) e sem texto extra.";
-      }
-      const raw = (await askAi([{ role: "user", content: promptText }])) || "";
-      if (args.response_json_schema) {
-        const cleaned = String(raw).replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-        let parsed = null;
-        try {
-          parsed = JSON.parse(cleaned);
-        } catch {
-          const match = cleaned.match(/\{[\s\S]*\}/);
-          if (match) {
-            try { parsed = JSON.parse(match[0]); } catch {}
-          }
-        }
-        if (parsed && typeof parsed === "object") {
-          if (!parsed.items && Array.isArray(parsed.itens)) parsed.items = parsed.itens;
-          if (Array.isArray(parsed.items)) {
-            parsed.items = parsed.items.map(item => ({
-              name: item.name || item.nome || item.produto || item.sabor || "",
-              quantity: Number(item.quantity ?? item.quantidade ?? item.qtd) || 1,
-              price: Number(item.price ?? item.preco ?? item.preco_unitario) || 0,
-            }));
-          }
-          return parsed;
-        }
-        return {};
-      }
-      return raw;
+      return invokeLLM(args, askAi);
     }
     throw new Error("Operação não suportada.");
   }, 90000, entry, directory);

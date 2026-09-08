@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { compileFunction, runFunctionSource } from "../bin/function-runtime.mjs";
 import { createFunctionInvoker, ensureSession } from "../bin/client-bridge.mjs";
 import { installLoginBootstrap } from "../bin/runtime-auth.mjs";
+import { invokeLLM } from "../bin/structured-ai.mjs";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ test("função exportada mantém handler/prompt e encaminha dados pelo adaptador
     assert.equal(args.prompt,'Somente minha nota hoje?'); return 'Resposta de teste';
   });
   assert.deepEqual(result,{status:200,data:{reply:'Resposta de teste'}});
-  assert.deepEqual(calls[0],{method:'entity',args:{entity:'Note',method:'list',args:['-note_date',100]}});
+  assert.deepEqual(calls[0],{method:'entity',args:{entity:'Note',method:'list',args:['-note_date',100],serviceRole:true}});
 });
 test("worker não recebe credenciais do ambiente pai e interrompe loop",async()=>{
   const envSource=`import {createClientFromRequest} from '@base44/sdk'; export default async function(){return Response.json({process:typeof process});}`;
@@ -116,4 +117,13 @@ test("função resolve módulos relativos compartilhados e suporta create", asyn
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("resposta estruturada da IA preserva o schema do aplicativo", async () => {
+  const result = await invokeLLM({ prompt: "pedido", response_json_schema: {
+    type: "object", required: ["items", "metadata"], additionalProperties: false,
+    properties: { items: { type: "array", items: { type: "object", required: ["sku", "quantity"], properties: { sku: { type: "string" }, quantity: { type: "integer" } } } }, metadata: { type: "object" } }
+  } }, async () => '```json\n{"items":[{"sku":"ABC","quantity":2}],"metadata":{"source":"app"}}\n```');
+  assert.deepEqual(result, { items: [{ sku: "ABC", quantity: 2 }], metadata: { source: "app" } });
+  await assert.rejects(invokeLLM({ prompt: "x", response_json_schema: { type: "object", required: ["quantity"], properties: { quantity: { type: "integer" } } } }, async () => '{"quantity":"2"}'), /não corresponde/);
 });

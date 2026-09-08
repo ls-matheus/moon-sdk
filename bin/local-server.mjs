@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { queryDatabase, verifyUser } from "./database-api.mjs";
 import { invokeLocalFunction } from "./function-runtime.mjs";
+import { isAllowedOrigin } from './http-security.mjs';
 
 const port = Number(process.env.MOON_BACKEND_PORT || 8787);
 const projectDir = process.cwd();
@@ -13,20 +14,6 @@ const configPath = resolve(projectDir, "moon.config.json");
 function loadConfig() {
   if (!existsSync(configPath)) return {};
   try { return JSON.parse(readFileSync(configPath, "utf8")); } catch { return {}; }
-}
-
-function isAllowedOrigin(origin) {
-  if (!origin) return true;
-  try {
-    const { hostname } = new URL(origin);
-    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1" || hostname.endsWith(".local")) return true;
-    if (/^10(?:\.\d{1,3}){3}$/.test(hostname)) return true;
-    if (/^192\.168(?:\.\d{1,3}){2}$/.test(hostname)) return true;
-    if (/^172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}$/.test(hostname)) return true;
-    return false;
-  } catch {
-    return false;
-  }
 }
 
 async function askAi(messages) {
@@ -65,7 +52,7 @@ async function askAi(messages) {
   const content = provider === "anthropic"
     ? data.content?.[0]?.text
     : provider === "gemini"
-    ? (data.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "")
+    ? (data.candidates?.[0]?.content?.parts?.filter(part => !part.thought).map(part => part.text || "").join("") || "")
     : data.choices?.[0]?.message?.content || "";
   if (!content) throw new Error("A IA não retornou conteúdo");
   return content;
@@ -74,17 +61,15 @@ async function askAi(messages) {
 const server = createServer((request, response) => {
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   const origin = request.headers.origin || "";
-  if (origin && !isAllowedOrigin(origin)) { response.statusCode = 403; response.end(JSON.stringify({error:"Origem não permitida."})); return; }
+  if (!isAllowedOrigin(origin, { port: process.env.MOON_FRONTEND_PORT || 5173, network: process.env.MOON_NETWORK === 'true' })) { response.statusCode = 403; response.end(JSON.stringify({error:"Origem não permitida. Use o endereço exibido pelo Moon; para rede local, inicie com --network."})); return; }
   if (origin) {
     response.setHeader("Access-Control-Allow-Origin", origin);
-    response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    response.setHeader("Vary", "Origin");
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   }
   if (request.method === "OPTIONS") { response.statusCode = 204; response.end(); return; }
   if (request.method === "POST" && request.url === "/api/database") {
-    if (origin && !isAllowedOrigin(origin)) {
-      response.statusCode = 403; response.end(JSON.stringify({ error: "Origem não permitida." })); return;
-    }
     let raw = "", size = 0, oversized = false;
     request.on("data", chunk => {
       size += chunk.length;
@@ -113,18 +98,19 @@ const server = createServer((request, response) => {
       try {
         if (oversized) throw new Error("Requisição excede 1 MB.");
         const token = (request.headers.authorization || "").replace(/^Bearer /, "");
-        if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         const payload = JSON.parse(raw || "{}");
         if (request.url.startsWith("/api/functions/")) {
-          const result = await invokeLocalFunction(request.url.slice("/api/functions/".length), payload, token, loadConfig(), process.env, projectDir, askAi);
+          const result = await invokeLocalFunction(decodeURIComponent(request.url.slice("/api/functions/".length)), payload, token, loadConfig(), process.env, projectDir, askAi);
           response.statusCode = result.status; response.end(JSON.stringify(result.data)); return;
         }
+        if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         await verifyUser(token, loadConfig(), process.env);
         const content = await askAi(Array.isArray(payload.messages) ? payload.messages : []);
         response.end(JSON.stringify({ content }));
       } catch (error) {
-        response.statusCode = 502;
-        response.end(JSON.stringify({ error: error.publicMessage || error.message || "Falha na função/IA local. Confira login, configuração e recursos suportados." }));
+        response.statusCode = error instanceof SyntaxError ? 400 : error.status || 502;
+        console.error('Moon função/IA:', error.code || error.name);
+        response.end(JSON.stringify({ error: error instanceof SyntaxError ? 'Requisição JSON inválida.' : error.publicMessage || "Falha na função/IA local. Execute moon inspect para conferir compatibilidade e configuração." }));
       }
     });
     return;
@@ -137,6 +123,7 @@ const server = createServer((request, response) => {
   if (request.url === "/api/status") {
     response.end(JSON.stringify({
       ok: true,
+      sdkVersion: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version,
       provider: config.provider || null,
       databaseConfigured: Boolean(config.provider && config.provider !== "none"),
       aiConfigured: Boolean(process.env.MOON_AI_API_KEY),

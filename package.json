@@ -1,6 +1,6 @@
 {
   "name": "@moon/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Moon SDK for portable applications",
   "type": "module",
   "main": "dist/index.js",
@@ -17,12 +17,13 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test tests/*.test.mjs",
+    "test": "node bin/check-syntax.mjs && npm run build && node --test tests/*.test.mjs",
     "check": "npm run typecheck && npm test",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",
+    "ajv": "^8.20.0",
     "firebase": "^12.18.0",
     "jsonc-parser": "3.3.1",
     "mysql2": "^3.24.3",

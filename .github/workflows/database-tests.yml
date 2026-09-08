@@ -30,8 +30,11 @@ jobs:
           node-version: '22'
       - run: npm ci --ignore-scripts
       - run: npm run audit
-      - name: Testar contratos sem depender dos serviços da máquina
+      - name: Testar contratos e isolamento em bancos reais
         run: npm run check
+        env:
+          MOON_TEST_POSTGRES_URL: postgres://postgres:moon_ci@localhost:5432/moon_ci
+          MOON_TEST_MYSQL_URL: mysql://root:moon_ci@localhost:3306/moon_ci
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

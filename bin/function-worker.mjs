@@ -14,52 +14,50 @@ parentPort.on("message", message => {
   if (message.error) item.reject(new Error(message.error)); else item.resolve(message.result);
 });
 
-const entities = new Proxy({}, { get(_target, entity) {
+const entities = serviceRole => new Proxy({}, { get(_target, entity) {
   if (typeof entity !== "string" || entity === "then") return undefined;
   return Object.fromEntries(["list", "filter", "get", "create", "update", "delete"].map(method => [
     method,
-    (...args) => rpc("entity", { entity, method, args })
+    (...args) => rpc("entity", { entity, method, args, ...(serviceRole ? { serviceRole: true } : {}) })
   ]));
 } });
 
 const client = {
-  entities,
+  entities: entities(false),
   auth: { me: async () => workerData.user },
   integrations: { Core: { InvokeLLM: params => rpc("llm", params) } }
 };
 
-client.asServiceRole = client;
+client.asServiceRole = { ...client, entities: entities(true) };
 
 const moduleCache = new Map();
 function loadModule(name) {
-  if (name === workerData.sdkImport || /^(?:npm:)?@base44\/sdk(?:@[0-9.]+)?$/.test(name)) {
+  if (name === '@sdk') {
     return { createClientFromRequest: () => client };
   }
   if (workerData.modules && workerData.modules[name]) {
-    if (moduleCache.has(name)) return moduleCache.get(name);
+    if (moduleCache.has(name)) return moduleCache.get(name).exports;
     const subModule = { exports: {} };
+    moduleCache.set(name, subModule);
+    const record = workerData.modules[name];
     const subContext = vm.createContext({
       exports: subModule.exports, module: subModule,
-      require: loadModule,
-      Request, Response, URL, TextEncoder, TextDecoder, console,
+      require(specifier) {
+        if (!Object.hasOwn(record.dependencies, specifier)) throw new Error('Dependência não declarada.');
+        return loadModule(record.dependencies[specifier]);
+      },
+      Request, Response, URL, TextEncoder, TextDecoder,
     }, { codeGeneration: { strings: false, wasm: false } });
-    new vm.Script(workerData.modules[name], { filename: name }).runInContext(subContext, { timeout: 2000 });
-    moduleCache.set(name, subModule.exports);
+    new vm.Script(record.code, { filename: 'function-module-' + name }).runInContext(subContext, { timeout: 2000 });
     return subModule.exports;
   }
   throw new Error("Dependência de função não suportada pelo executor local: " + name);
 }
 
-const module = { exports: {} };
-const context = vm.createContext({
-  exports: module.exports, module, Request, Response, URL, TextEncoder, TextDecoder, console,
-  require: loadModule,
-}, { codeGeneration: { strings: false, wasm: false } });
-
 try {
-  new vm.Script(workerData.code, { filename: "imported-function.js" }).runInContext(context, { timeout: 2000 });
-  if (typeof module.exports.default !== "function") throw new Error("Função deve exportar um handler default.");
-  const response = await module.exports.default(new Request("http://localhost/function", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(workerData.payload) }));
+  const entry = loadModule(workerData.entryId);
+  if (typeof entry.default !== "function") throw new Error("Função deve exportar um handler default.");
+  const response = await entry.default(new Request("http://localhost/function", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(workerData.payload) }));
   if (!(response instanceof Response)) throw new Error("A função não retornou uma Response.");
   const body = await response.text();
   if (body.length > 1048576) throw new Error("Resposta da função excedeu o limite.");
