@@ -270,6 +270,10 @@ async function runLocalProcesses() {
   // configureAi can save credentials after the first environment load.
   loadEnvFile();
   const network = process.argv.includes("--network");
+  const backendPort = Number(process.env.MOON_BACKEND_PORT || 8787);
+  const frontendPort = Number(process.env.MOON_FRONTEND_PORT || 5173);
+  releasePort(backendPort);
+  releasePort(frontendPort);
   const serverPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "local-server.mjs");
   let frontendDir = findRunnableProject(projectDir);
   if (frontendDir) {
@@ -292,9 +296,28 @@ async function runLocalProcesses() {
   backend.once("exit", (code) => { if (code && code !== 143) { if (frontend && !frontend.killed) frontend.kill("SIGTERM"); process.exitCode = code; } });
   if (frontend) frontend.once("error", (error) => { console.error(`Frontend não iniciou: ${error.message}`); stop(); process.exitCode = 1; });
   if (frontend) frontend.once("exit", (code) => { if (code && code !== 0 && code !== 143) console.error(`Frontend encerrou com código ${code}. Verifique a saída do Vite acima.`); });
-  print(`Backend local: http://localhost:${process.env.MOON_BACKEND_PORT || 8787}`);
+  print(`Backend local: http://localhost:${backendPort}`);
   if (frontend) print(`Frontend ${network ? "na rede: use o IP do computador na porta 5173" : "local: confira o endereço mostrado pelo Vite"} (projeto: ${frontendDir})`);
   else print("Frontend local: nenhum script dev encontrado");
+}
+
+function releasePort(port) {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return;
+  const pids = new Set();
+  if (windows) {
+    const result = spawnSync("netstat.exe", ["-ano", "-p", "tcp"], { encoding: "utf8" });
+    for (const line of result.stdout?.split(/\r?\n/) || []) {
+      if (new RegExp(`:${port}\\s+.*LISTENING\\s+(\\d+)`, "i").test(line)) pids.add(line.trim().split(/\s+/).pop());
+    }
+  } else {
+    const result = spawnSync("lsof", ["-tiTCP:" + port, "-sTCP:LISTEN"], { encoding: "utf8" });
+    for (const pid of result.stdout?.split(/\s+/) || []) if (/^\d+$/.test(pid)) pids.add(pid);
+  }
+  for (const pid of pids) {
+    if (windows) spawnSync("taskkill.exe", ["/PID", pid, "/T", "/F"], { stdio: "ignore" });
+    else spawnSync("kill", ["-KILL", pid], { stdio: "ignore" });
+    print(`✓ Processo anterior encerrado na porta ${port} (PID ${pid})`);
+  }
 }
 
 function stopProcessTree(child) {
