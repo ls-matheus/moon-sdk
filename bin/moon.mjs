@@ -407,8 +407,8 @@ export const base44 = {
   auth: {
     me: () => sdk.auth.me(), isAuthenticated: () => sdk.auth.isAuthenticated(),
     loginViaEmailPassword: (email, password) => sdk.auth.loginViaEmailPassword(email, password),
-    register: (params) => sdk.auth.register(params), updateMe: (data) => sdk.auth.updateMe(data),
-    resetPasswordRequest: (email) => sdk.auth.resetPasswordForEmail(email), resetPassword: () => Promise.reject(new Error("Redefinição por token deve ser adaptada ao provedor escolhido.")),
+    register: (params) => sdk.auth.register({ ...params, options: { ...(params.options || {}), emailRedirectTo: window.location.origin } }), updateMe: (data) => sdk.auth.updateMe(data),
+    resetPasswordRequest: (email) => sdk.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin }), resetPassword: () => Promise.reject(new Error("Redefinição por token deve ser adaptada ao provedor escolhido.")),
     logout: async () => { await sdk.auth.logout(); window.location.reload(); }, setToken: (token) => sdk.auth.setToken(token),
     loginWithProvider: (provider, redirectTo) => sdk.auth.loginWithProvider(provider, redirectTo),
     verifyOtp: (params) => auth.verifyOtp(params), resendOtp: (email) => auth.resend({ email, type: "signup" }),

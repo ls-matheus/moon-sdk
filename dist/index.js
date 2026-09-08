@@ -95,8 +95,8 @@ export function createClient(db) {
             token = result.session?.access_token;
             return toAuthResult(result.session);
         },
-        async register({ email, password }) {
-            const result = await db.auth.signUp({ email, password });
+        async register({ email, password, options }) {
+            const result = await db.auth.signUp({ email, password, options });
             token = result.session?.access_token;
             return toAuthResult(result.session);
         },

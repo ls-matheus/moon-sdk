@@ -28,7 +28,7 @@ export function createBrowserClient(options: BrowserOptions) {
     auth = {
       getSession: () => unwrap(supabase!.auth.getSession()), getUser: () => unwrap(supabase!.auth.getUser()),
       signInWithPassword: credentials => unwrap(supabase!.auth.signInWithPassword(credentials)),
-      signUp: credentials => unwrap(supabase!.auth.signUp(credentials)), signOut: () => unwrap(supabase!.auth.signOut()),
+      signUp: credentials => unwrap(supabase!.auth.signUp(credentials as any)), signOut: () => unwrap(supabase!.auth.signOut()),
       updateUser: attributes => unwrap(supabase!.auth.updateUser(attributes)),
       resetPasswordForEmail: (email, settings) => unwrap(supabase!.auth.resetPasswordForEmail(email, settings)),
       signInWithOAuth: settings => unwrap(supabase!.auth.signInWithOAuth(settings as any)),

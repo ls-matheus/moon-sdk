@@ -93,8 +93,8 @@ export function createClient(db: DatabaseAdapter): MoonClient {
       token = result.session?.access_token;
       return toAuthResult(result.session);
     },
-    async register({ email, password }: { email: string; password: string }) {
-      const result = await db.auth.signUp({ email, password });
+    async register({ email, password, options }: { email: string; password: string; options?: Record<string, unknown> }) {
+      const result = await db.auth.signUp({ email, password, options });
       token = result.session?.access_token;
       return toAuthResult(result.session);
     },

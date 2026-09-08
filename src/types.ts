@@ -28,7 +28,7 @@ export interface AuthAdapter {
   getSession(): Promise<{ session: Session | null }>;
   getUser(): Promise<{ user: User | null }>;
   signInWithPassword(credentials: { email: string; password: string }): Promise<{ session: Session | null; user: User | null }>;
-  signUp(credentials: { email: string; password: string }): Promise<{ session: Session | null; user: User | null }>;
+  signUp(credentials: { email: string; password: string; options?: Record<string, unknown> }): Promise<{ session: Session | null; user: User | null }>;
   signOut(): Promise<void>;
   updateUser(attributes: Record<string, unknown>): Promise<{ user: User | null }>;
   resetPasswordForEmail(email: string, options?: Record<string, unknown>): Promise<void>;
@@ -73,7 +73,7 @@ export interface MoonClient {
     isAuthenticated(): Promise<boolean>;
     getAccessToken(): Promise<string | undefined>;
     loginViaEmailPassword(email: string, password: string): Promise<{ access_token?: string; user?: User | null }>;
-    register(params: { email: string; password: string }): Promise<{ access_token?: string; user?: User | null }>;
+    register(params: { email: string; password: string; options?: Record<string, unknown> }): Promise<{ access_token?: string; user?: User | null }>;
     updateMe(data: Record<string, unknown>): Promise<User | null>;
     resetPasswordForEmail(email: string, options?: Record<string, unknown>): Promise<void>;
     logout(): Promise<void>;

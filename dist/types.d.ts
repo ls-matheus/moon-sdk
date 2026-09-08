@@ -37,6 +37,7 @@ export interface AuthAdapter {
     signUp(credentials: {
         email: string;
         password: string;
+        options?: Record<string, unknown>;
     }): Promise<{
         session: Session | null;
         user: User | null;
@@ -105,6 +106,7 @@ export interface MoonClient {
         register(params: {
             email: string;
             password: string;
+            options?: Record<string, unknown>;
         }): Promise<{
             access_token?: string;
             user?: User | null;
