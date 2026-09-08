@@ -12,14 +12,11 @@ export function createLoginRedirect(policy, location = globalThis.location) {
 export function createFunctionInvoker(auth, request = globalThis.fetch) {
   return async (name, payload = {}) => {
     if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error("Nome de função não suportado.");
-    const token = await auth.getAccessToken();
-    if (!token) throw new Error("Entre na sua conta para usar o assistente.");
     let token = null;
     try { token = await auth?.getAccessToken?.(); } catch {}
     const headers = { "Content-Type": "application/json" };
     if (token) headers.Authorization = "Bearer " + token;
     const response = await request("/api/functions/" + encodeURIComponent(name), {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
       method: "POST", headers,
       body: JSON.stringify(payload),
     });
