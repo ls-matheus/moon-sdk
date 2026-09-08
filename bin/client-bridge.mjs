@@ -13,19 +13,47 @@ export function createFunctionInvoker(auth, request = globalThis.fetch) {
   return async (name, payload = {}) => {
     if (!/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(name)) throw new Error("Nome de função não suportado.");
     const token = await auth?.getAccessToken?.();
-    const headers = { "Content-Type": "application/json" };
+    if (typeof payload === 'string') throw new Error('A função exige um objeto com parâmetros nomeados.');
+    let body = payload;
+    const multipart = typeof FormData !== 'undefined' && payload instanceof FormData;
+    const hasFile = !multipart && payload && Object.values(payload).some(value => typeof Blob !== 'undefined' && value instanceof Blob);
+    if (hasFile) {
+      body = new FormData();
+      for (const [key, value] of Object.entries(payload)) body.append(key, value instanceof Blob ? value : value && typeof value === 'object' ? JSON.stringify(value) : String(value));
+    }
+    const headers = multipart || hasFile ? {} : { "Content-Type": "application/json" };
     if (token) headers.Authorization = "Bearer " + token;
     const response = await request("/api/functions/" + encodeURIComponent(name), {
       method: "POST", headers,
-      body: JSON.stringify(payload),
+      body: multipart || hasFile ? body : JSON.stringify(payload),
     });
-    const data = await response.json();
+    const data = response.status === 204 ? null : response.headers?.get('content-type')?.includes('application/json') ? await response.json() : await response.text();
     if (!response.ok) {
-      const error = new Error(data.error || "Falha na função local.");
+      const error = new Error(data?.error || "Falha na função local.");
       error.status = response.status; error.response = { status: response.status, data };
       throw error;
     }
     return { data, status: response.status };
+  };
+}
+
+export function createFetchWithAuth(auth, transport = globalThis.fetch) {
+  return async (path, init = {}) => {
+    const normalized = typeof path === 'string' ? path.replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+/, '') : '';
+    if (!normalized.startsWith('/') || normalized.startsWith('//') || normalized.startsWith('/\\')) throw new Error('fetchWithAuth exige uma rota da própria aplicação, como /api/orders.');
+    const { fetch: request = transport, ...options } = init;
+    const headers = new Headers(options.headers);
+    const token = await auth?.getAccessToken?.();
+    if (token && !headers.has('Authorization')) headers.set('Authorization', 'Bearer ' + token);
+    return request(path, { ...options, headers });
+  };
+}
+
+export function createFunctionFetch(auth, request = globalThis.fetch) {
+  const fetchWithAuth = createFetchWithAuth(auth, request);
+  return (path, init) => {
+    if (typeof path !== 'string' || !/^\/?[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*(?:\?[^#]*)?$/.test(path)) throw new Error('Caminho de função inválido.');
+    return fetchWithAuth('/api/functions/' + path.replace(/^\//, ''), init);
   };
 }
 

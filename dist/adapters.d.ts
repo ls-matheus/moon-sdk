@@ -1,5 +1,6 @@
 import type { AuthAdapter, DatabaseAdapter } from "./types.js";
 import { type Provider } from "./dictionaries.js";
+import type { SupabaseClient } from '@supabase/supabase-js';
 export interface QueryRequest {
     table: string;
     select?: string[];
@@ -40,8 +41,8 @@ export declare function createSqlAdapter(executor: SqlExecutor, provider?: "post
     }>;
 }): DatabaseAdapter;
 /** Firestore compat/Admin-style client. Use authenticated client credentials for user access. */
-export declare function createFirebaseAdapter(firestore: any, auth: DatabaseAdapter["auth"], scoped?: boolean): DatabaseAdapter;
-export declare function createSupabaseAdapter(client: DatabaseAdapter): DatabaseAdapter;
+export declare function createFirebaseAdapter(firestore: any, auth: DatabaseAdapter["auth"], scoped?: boolean, publicTables?: string[]): DatabaseAdapter;
+export declare function createSupabaseAdapter(client: SupabaseClient): DatabaseAdapter;
 /** Local-only adapter for development and previews when no remote database is configured. */
 export declare function createMemoryAdapter(storage?: {
     getItem(key: string): string | null;

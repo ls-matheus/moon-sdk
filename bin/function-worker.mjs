@@ -46,7 +46,7 @@ function loadModule(name) {
         if (!Object.hasOwn(record.dependencies, specifier)) throw new Error('Dependência não declarada.');
         return loadModule(record.dependencies[specifier]);
       },
-      Request, Response, URL, TextEncoder, TextDecoder,
+      Request, Response, Headers, FormData, File, Blob, URL, URLSearchParams, TextEncoder, TextDecoder,
     }, { codeGeneration: { strings: false, wasm: false } });
     new vm.Script(record.code, { filename: 'function-module-' + name }).runInContext(subContext, { timeout: 2000 });
     return subModule.exports;
@@ -57,11 +57,18 @@ function loadModule(name) {
 try {
   const entry = loadModule(workerData.entryId);
   if (typeof entry.default !== "function") throw new Error("Função deve exportar um handler default.");
-  const response = await entry.default(new Request("http://localhost/function", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(workerData.payload) }));
+  const http = workerData.httpRequest;
+  const request = http ? new Request(http.url, { method: http.method, headers: http.headers, ...(!['GET', 'HEAD'].includes(http.method) ? { body: new Uint8Array(http.body) } : {}) })
+    : new Request("http://localhost/function", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(workerData.payload) });
+  const response = await entry.default(request);
   if (!(response instanceof Response)) throw new Error("A função não retornou uma Response.");
-  const body = await response.text();
-  if (body.length > 1048576) throw new Error("Resposta da função excedeu o limite.");
-  parentPort.postMessage({ type: "result", status: response.status, body });
+  const chunks = []; let size = 0;
+  if (response.body) for await (const chunk of response.body) {
+    size += chunk.length;
+    if (size > 1048576) throw new Error("Resposta da função excedeu o limite.");
+    chunks.push(chunk);
+  }
+  parentPort.postMessage({ type: "result", status: response.status, headers: [...response.headers], body: Buffer.concat(chunks) });
 } catch (err) {
   parentPort.postMessage({ type: "failed", error: err?.message || "Não foi possível executar a função local. Verifique a configuração de IA e os recursos suportados." });
 }

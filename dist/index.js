@@ -1,3 +1,4 @@
+import { createSupabaseAdapter } from './adapters.js';
 export * from "./dictionaries.js";
 export * from "./adapters.js";
 export * from "./browser.js";
@@ -109,7 +110,8 @@ function makeEntity(db, table) {
 function toAuthResult(session) {
     return { access_token: session?.access_token, user: session?.user ?? null };
 }
-export function createClient(db) {
+export function createClient(database) {
+    const db = 'supabaseUrl' in database ? createSupabaseAdapter(database) : database;
     let token;
     const entities = new Proxy({}, {
         get(_target, name) {

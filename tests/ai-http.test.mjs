@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -27,7 +27,11 @@ test('HTTP de IA verifica sessão e executa InvokeLLM com schema sem Base44', { 
   try {
     upstream.listen(0, '127.0.0.1');
     await once(upstream, 'listening');
-    writeFileSync(join(directory, 'moon.config.json'), JSON.stringify({ provider: 'supabase' }));
+    writeFileSync(join(directory, 'moon.config.json'), JSON.stringify({ provider: 'supabase', localFunctions: { echo: { access: 'public' }, upload: { access: 'public' }, empty: { access: 'public' } } }));
+    mkdirSync(join(directory, 'functions'));
+    writeFileSync(join(directory, 'functions/echo.ts'), `Deno.serve(async req => new Response(req.method + ':' + new URL(req.url).searchParams.get('q') + ':' + req.headers.get('x-app'), {headers:{'Content-Type':'text/plain','X-Result':'preserved'}}));`);
+    writeFileSync(join(directory, 'functions/upload.ts'), `export default async req => { const form=await req.formData(); const file=form.get('file'); return Response.json({name:file.name,text:await file.text()}); };`);
+    writeFileSync(join(directory, 'functions/empty.ts'), `export default () => new Response(null, {status:204});`);
     child = spawn(process.execPath, [fileURLToPath(new URL('../bin/local-server.mjs', import.meta.url))], {
       cwd: directory,
       env: { ...process.env, MOON_BACKEND_PORT: '0', MOON_AI_PROVIDER: 'openai', MOON_AI_API_KEY: 'test-ai-key',
@@ -51,6 +55,19 @@ test('HTTP de IA verifica sessão e executa InvokeLLM com schema sem Base44', { 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { answer: 'ok' });
     assert.equal(aiCalls, 1);
+    const functionUrl = endpoint.replace('/api/ai/invoke', '/api/functions/');
+    const echo = await fetch(functionUrl + 'echo?q=ol%C3%A1', { headers: { 'X-App': 'ok' } });
+    assert.equal(echo.status, 200);
+    assert.equal(echo.headers.get('x-result'), 'preserved');
+    assert.equal(await echo.text(), 'GET:olá:ok');
+    const file = new FormData(); file.append('file', new File(['conteúdo'], 'note.txt'));
+    const uploaded = await fetch(functionUrl + 'upload', { method: 'POST', body: file });
+    assert.equal(uploaded.status, 200);
+    assert.deepEqual(await uploaded.json(), { name: 'note.txt', text: 'conteúdo' });
+    const empty = await fetch(functionUrl + 'empty', { method: 'POST' });
+    assert.equal(empty.status, 204); assert.equal(await empty.text(), '');
+    const missing = await fetch(functionUrl + 'missing');
+    assert.equal(missing.status, 401);
   } finally {
     if (child && child.exitCode === null) { const exited = once(child, 'exit'); child.kill(); await exited; }
     upstream.closeAllConnections();

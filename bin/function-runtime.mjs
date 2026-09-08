@@ -1,17 +1,17 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { resolve, sep } from "node:path";
+import { readFileSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import { compileFunction } from "./function-compiler.mjs";
 export { compileFunction } from "./function-compiler.mjs";
 import { invokeLLM } from "./structured-ai.mjs";
 import { verifyUser, queryDatabase } from "./database-api.mjs";
 import { createClient, createAdapter } from "../dist/index.js";
+import { resolveFunctionEntry } from './function-entries.mjs';
 
-export function runFunctionSource(source, payload, user, invoke, timeout = 90000, entryPath = null, projectDir = null) {
+export function runFunctionSource(source, payload, user, invoke, timeout = 90000, entryPath = null, projectDir = null, httpRequest = null) {
   const compiled = compileFunction(source, entryPath, projectDir);
   return new Promise((resolveResult, reject) => {
     const worker = new Worker(new URL("./function-worker.mjs", import.meta.url), {
-      workerData: { ...compiled, payload, user }, env: {}, execArgv: [],
+      workerData: { ...compiled, payload, user, httpRequest }, env: {}, execArgv: [],
       resourceLimits: { maxOldGenerationSizeMb: 64 },
     });
     let settled = false, requests = 0;
@@ -26,7 +26,7 @@ export function runFunctionSource(source, payload, user, invoke, timeout = 90000
     worker.on("message", async message => {
       if (settled) return;
       if (message.type === "result") {
-        try { finish(null, { status: message.status, data: JSON.parse(message.body) }); }
+        try { finish(null, httpRequest ? { status: message.status, headers: message.headers, body: message.body } : { status: message.status, data: JSON.parse(Buffer.from(message.body).toString('utf8')) }); }
         catch { finish(new Error("A função deve retornar JSON.")); }
       } else if (message.type === "failed") finish(new Error(message.error));
       else if (message.type === "rpc") {
@@ -40,7 +40,7 @@ export function runFunctionSource(source, payload, user, invoke, timeout = 90000
   });
 }
 
-export async function invokeLocalFunction(name, payload, token, config, env, directory, askAi) {
+export async function invokeLocalFunction(name, payload, token, config, env, directory, askAi, httpRequest = null) {
   if (!/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(name)) throw new Error("Nome de função inválido.");
   const policy = config.localFunctions?.[name] || {};
   if (policy.access && !['public', 'authenticated'].includes(policy.access)) throw new Error('Permissão de função inválida.');
@@ -48,10 +48,7 @@ export async function invokeLocalFunction(name, payload, token, config, env, dir
   if (!user && policy.access !== 'public') {
     const error = new Error('Entre na sua conta para usar esta função.'); error.status = 401; error.publicMessage = error.message; throw error;
   }
-  if (!["supabase", "postgres", "mysql"].includes(config.provider)) throw new Error("Funções locais com dados suportam Supabase, PostgreSQL e MySQL nesta versão.");
-  const folder = resolve(directory, "base44/functions");
-  const entry = ["entry.ts", "entry.js"].map(file => resolve(folder, name, file)).find(existsSync);
-  if (!entry || !realpathSync(entry).startsWith(realpathSync(folder) + sep)) throw new Error("Função não encontrada no projeto.");
+  const entry = resolveFunctionEntry(directory, name);
   const source = readFileSync(entry, "utf8");
   const makeClient = functionGrants => createClient(createAdapter({
     provider: config.provider,
@@ -72,5 +69,5 @@ export async function invokeLocalFunction(name, payload, token, config, env, dir
       return invokeLLM(args, askAi);
     }
     throw new Error("Operação não suportada.");
-  }, 90000, entry, directory);
+  }, 90000, entry, directory, httpRequest);
 }

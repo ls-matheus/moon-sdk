@@ -2,6 +2,8 @@ import type {
   AuthChange, DatabaseAdapter, EntityFilter, EntityHandler, EntityQuery,
   MoonClient, User,
 } from "./types.js";
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createSupabaseAdapter } from './adapters.js';
 
 export type * from "./types.js";
 export * from "./dictionaries.js";
@@ -103,7 +105,8 @@ function toAuthResult(session: { access_token?: string; user?: User | null } | n
   return { access_token: session?.access_token, user: session?.user ?? null };
 }
 
-export function createClient(db: DatabaseAdapter): MoonClient {
+export function createClient(database: DatabaseAdapter | SupabaseClient): MoonClient {
+  const db: DatabaseAdapter = 'supabaseUrl' in database ? createSupabaseAdapter(database as SupabaseClient) : database as DatabaseAdapter;
   let token: string | undefined;
   const entities = new Proxy({}, {
     get(_target, name) {

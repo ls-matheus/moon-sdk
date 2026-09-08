@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createClient, createMemoryAdapter, createAdapter } from '../dist/index.js';
+import { createClient, createMemoryAdapter, createAdapter, createFirebaseAdapter } from '../dist/index.js';
 import { createLLMInvoker } from '../bin/client-bridge.mjs';
+import { createSupabaseAuthAdapter } from '../dist/supabase-auth.js';
 
 test('API oficial de lotes cria e atualiza sem gravar id no payload de update', async () => {
   const sdk = createClient(createMemoryAdapter());
@@ -54,4 +55,35 @@ test('InvokeLLM envia sessão e preserva texto/JSON do contrato oficial', async 
   }
   const invoke = createLLMInvoker(null, async () => Response.json({ error: 'Entre na sua conta' }, { status: 401 }));
   await assert.rejects(invoke({ prompt: 'Olá' }), error => error.status === 401 && error.response.data.error === 'Entre na sua conta');
+});
+
+test('Firestore Web atende leitura pública e skip sem exigir offset do Admin SDK', async () => {
+  const docs = [1, 2, 3, 4].map(id => ({ id: String(id), data: () => ({ title: 'n' + id }) }));
+  let reads = 0, max;
+  const collection = { limit(value) { max = value; return this; }, async get() { reads++; return { docs: docs.slice(0, max) }; } };
+  const auth = { getUser: async () => { throw new Error('Não deve exigir login para tabela pública'); } };
+  const sdk = createClient(createFirebaseAdapter({ collection: () => collection }, auth, true, ['note']));
+  assert.deepEqual(await sdk.entities.Note.list(undefined, 2, 1, ['title']), [{ title: 'n2' }, { title: 'n3' }]);
+  assert.deepEqual(await sdk.entities.Note.list(undefined, 0, 0), []);
+  assert.equal(reads, 1);
+  await assert.rejects(sdk.entities.Note.create({ title: 'proibido' }), /apenas leitura/);
+});
+
+test('Supabase adapta envelopes de auth e campos de perfil sem confiar no role editável', async () => {
+  const calls = [];
+  const user = { id: 'real-id', user_metadata: { id: 'forged', full_name: 'Ana', role: 'admin' }, app_metadata: { role: 'user' } };
+  const raw = {
+    getUser: async () => ({ data: { user }, error: null }),
+    getSession: async () => ({ data: { session: { access_token: 'token', user } }, error: null }),
+    updateUser: async attrs => { calls.push(attrs); return { data: { user: { ...user, user_metadata: attrs.data } }, error: null }; },
+  };
+  const client = createClient({ supabaseUrl: 'https://example.test', from() {}, auth: raw });
+  assert.equal(await client.auth.isAuthenticated(), true);
+  assert.equal((await client.auth.me()).full_name, 'Ana');
+  assert.equal((await client.auth.me()).id, 'real-id');
+  assert.equal((await client.auth.me()).role, 'user');
+  assert.equal((await client.auth.updateMe({ full_name: 'Bia' })).full_name, 'Bia');
+  assert.deepEqual(calls, [{ data: { full_name: 'Bia' } }]);
+  const fail = createSupabaseAuthAdapter({ getUser: async () => ({ data: null, error: new Error('session expired') }) });
+  await assert.rejects(fail.getUser(), /session expired/);
 });

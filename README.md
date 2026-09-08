@@ -2,9 +2,10 @@
 
 ## Compatibilidade com aplicativos Base44
 
-O SDK oficial incluído em `javascript-sdk-main` é uma referência de contrato.
+O contrato extraído do SDK oficial 0.8.48 está em `bin/base44-reference.json`.
 O Moon implementa essas chamadas com provedores próprios; ainda não existe
 compatibilidade completa com todos os recursos do Base44.
+Veja [COMPATIBILITY.md](COMPATIBILITY.md) para cobertura, adaptadores e limites.
 
 - Entidades: `list`, `filter`, `get`, `create`, `update`, `delete`, `bulkCreate` e `bulkUpdate`.
   `bulkUpdate` executa uma atualização por registro e pode concluir parcialmente se uma

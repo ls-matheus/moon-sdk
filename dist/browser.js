@@ -4,29 +4,22 @@ import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import { createAdapter, createFirebaseAdapter, createMemoryAdapter } from "./adapters.js";
 import { createClient } from "./index.js";
+import { createSupabaseAuthAdapter } from './supabase-auth.js';
 const firebase = firebaseCompat;
 export function createBrowserClient(options) {
+    if (!['none', 'supabase', 'firebase', 'postgres', 'mysql'].includes(options.provider))
+        throw new Error('Provedor de banco inválido ou ausente. Execute moon db para configurar.');
     if (options.provider === "none")
         return createClient(createMemoryAdapter(globalThis.localStorage));
     const authProvider = options.authProvider || (options.provider === "firebase" ? "firebase" : "supabase");
+    if (options.provider === 'firebase' && authProvider !== 'firebase')
+        throw new Error('Firestore no navegador exige Firebase Auth.');
     let auth, supabase, firestore;
     if (authProvider === "supabase") {
         if (!options.supabaseUrl || !options.supabaseKey)
             throw new Error("Configure URL e chave pública do Supabase Auth.");
         supabase = supabaseClient(options.supabaseUrl, options.supabaseKey);
-        const unwrap = async (result) => { const { data, error } = await result; if (error && error.name !== "AuthSessionMissingError")
-            throw error; return data; };
-        auth = {
-            getSession: () => unwrap(supabase.auth.getSession()), getUser: () => unwrap(supabase.auth.getUser()),
-            signInWithPassword: credentials => unwrap(supabase.auth.signInWithPassword(credentials)),
-            signUp: credentials => unwrap(supabase.auth.signUp(credentials)), signOut: () => unwrap(supabase.auth.signOut()),
-            updateUser: attributes => unwrap(supabase.auth.updateUser(attributes)),
-            resetPasswordForEmail: (email, settings) => unwrap(supabase.auth.resetPasswordForEmail(email, settings)),
-            signInWithOAuth: settings => unwrap(supabase.auth.signInWithOAuth(settings)),
-            verifyOtp: params => unwrap(supabase.auth.verifyOtp(params)),
-            resend: params => unwrap(supabase.auth.resend(params)),
-            onAuthStateChange: callback => supabase.auth.onAuthStateChange((event, session) => callback({ event, session: session ? { access_token: session.access_token, user: { id: session.user.id, email: session.user.email } } : null })).data.subscription,
-        };
+        auth = createSupabaseAuthAdapter(supabase.auth);
     }
     else {
         if (!options.firebase?.projectId || !options.firebase.apiKey)
@@ -60,7 +53,7 @@ export function createBrowserClient(options) {
     }
     let database;
     if (options.provider === "firebase")
-        database = createFirebaseAdapter(firestore, auth, true);
+        database = createFirebaseAdapter(firestore, auth, true, (options.publicEntities || []).map(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`)));
     else if (options.provider === "supabase") {
         database = createAdapter({ provider: "supabase", auth, async execute(request) {
                 const publicTable = options.publicEntities?.some(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`) === request.table);
@@ -68,8 +61,8 @@ export function createBrowserClient(options) {
                 if (!user && !publicTable) {
                     throw new Error("Login necessário.");
                 }
-                if (publicTable) {
-                    if (request.action !== "select")
+                if (publicTable || !supabase) {
+                    if (publicTable && request.action !== "select")
                         throw new Error("Entidade pública permite apenas leitura.");
                     const session = (await auth.getSession()).session;
                     const response = await fetch(options.endpoint || "/api/database", {
@@ -101,7 +94,7 @@ export function createBrowserClient(options) {
                     const operation = operators[filter.operator];
                     if (!operation)
                         throw new Error("Operador indisponível no Supabase.");
-                    query = query[filter.value === null && filter.operator === "$eq" ? "is" : operation](filter.field, filter.value);
+                    query = filter.value === null && filter.operator === '$neq' ? query.not(filter.field, 'is', null) : query[filter.value === null && filter.operator === "$eq" ? "is" : operation](filter.field, filter.value);
                 }
                 if (request.action !== "select")
                     query = query.select((request.select || ["*"]).join(","));
@@ -110,7 +103,7 @@ export function createBrowserClient(options) {
                 if (request.limit != null)
                     query = query.limit(request.limit);
                 if (request.offset != null)
-                    query = query.range(request.offset, request.offset + (request.limit || 100) - 1);
+                    query = query.range(request.offset, request.offset + (request.limit ?? 100) - 1);
                 const { data, error } = await query;
                 if (error)
                     throw error;

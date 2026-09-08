@@ -5,7 +5,7 @@ import { discoverLoginUi } from './login-discovery.mjs';
 // Only call on the generated runtime snapshot; shared app files stay unchanged.
 export function installLoginBootstrap(directory, clientPath, provider, options = {}) {
   copyFileSync(new URL("./client-bridge.mjs", import.meta.url), resolve(directory, "src/moon-client-bridge.mjs"));
-  if (provider === "none") return { mode: 'app', loginPath: null };
+  if (provider === "none" || options.mode === 'public') return { mode: options.mode === 'public' ? 'public' : 'app', loginPath: null };
   const indexPath = resolve(directory, "index.html");
   const html = readFileSync(indexPath, "utf8");
   const script = html.match(/<script\b(?=[^>]*\btype=["']module["'])(?=[^>]*\bsrc=["']([^"']+)["'])[^>]*>\s*<\/script>/i);

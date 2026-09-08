@@ -12,6 +12,7 @@
     "dist",
     "bin",
     "DATABASES.md",
+    "COMPATIBILITY.md",
     "SYNC.md"
   ],
   "scripts": {
@@ -29,5 +30,8 @@
     "mysql2": "^3.24.3",
     "pg": "^8.23.0",
     "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "vite": "8.2.2"
   }
 }

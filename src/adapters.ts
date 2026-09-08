@@ -1,5 +1,7 @@
 import type { AuthAdapter, DatabaseAdapter, EntityQuery } from "./types.js";
 import { dictionaries, type Provider, type ProviderDictionary } from "./dictionaries.js";
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createSupabaseAuthAdapter } from './supabase-auth.js';
 
 export interface QueryRequest {
   table: string;
@@ -168,13 +170,15 @@ export function createSqlAdapter(executor: SqlExecutor, provider: "postgres" | "
 }
 
 /** Firestore compat/Admin-style client. Use authenticated client credentials for user access. */
-export function createFirebaseAdapter(firestore: any, auth: DatabaseAdapter["auth"], scoped = false): DatabaseAdapter {
+export function createFirebaseAdapter(firestore: any, auth: DatabaseAdapter["auth"], scoped = false, publicTables: string[] = []): DatabaseAdapter {
   return createAdapter({
     provider: "firebase", auth,
     async execute<T>(request: QueryRequest) {
       const collection = firestore.collection(request.table);
-      const user = scoped ? (await auth.getUser()).user : null;
-      if (scoped && !user) throw new Error("Login necessário.");
+      const publicTable = publicTables.includes(request.table);
+      if (publicTable && request.action !== 'select') throw new Error('Entidade pública permite apenas leitura.');
+      const user = scoped && !publicTable ? (await auth.getUser()).user : null;
+      if (scoped && !publicTable && !user) throw new Error("Login necessário.");
       if (request.action === "select") {
         let reference = user ? collection.where("user_id", "==", user.id) : collection;
         for (const filter of request.filters) {
@@ -184,13 +188,16 @@ export function createFirebaseAdapter(firestore: any, auth: DatabaseAdapter["aut
         }
         if (request.order) reference = reference.orderBy(request.order.field, request.order.ascending ? "asc" : "desc");
         if (request.limit != null && (!Number.isSafeInteger(request.limit) || request.limit < 0)) throw new Error("Limite inválido.");
+        if (request.offset != null && (!Number.isSafeInteger(request.offset) || request.offset < 0)) throw new Error('Offset inválido.');
+        if (request.limit === 0) return { rows: [] as T[] };
+        let skip = 0;
         if (request.offset) {
-          if (!reference.offset) throw new Error("Este cliente Firestore exige paginação por cursor.");
-          reference = reference.offset(request.offset);
+          if (reference.offset) reference = reference.offset(request.offset);
+          else skip = request.offset;
         }
-        if (request.limit != null) reference = reference.limit(request.limit);
+        if (request.limit != null) reference = reference.limit(request.limit + skip);
         const snapshot = await reference.get();
-        const rows = snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id }));
+        const rows = snapshot.docs.slice(skip).map((doc: any) => ({ ...doc.data(), id: doc.id }));
         return { rows: rows.map((row: any) => !request.select || request.select.includes("*") ? row : Object.fromEntries(request.select.map(key => [key, row[key]]))) as T[] };
       }
       if (request.action === "insert") {
@@ -229,8 +236,8 @@ export function createFirebaseAdapter(firestore: any, auth: DatabaseAdapter["aut
   });
 }
 
-export function createSupabaseAdapter(client: DatabaseAdapter): DatabaseAdapter {
-  return client;
+export function createSupabaseAdapter(client: SupabaseClient): DatabaseAdapter {
+  return { from: client.from.bind(client) as unknown as DatabaseAdapter['from'], auth: createSupabaseAuthAdapter(client.auth) };
 }
 
 /** Local-only adapter for development and previews when no remote database is configured. */

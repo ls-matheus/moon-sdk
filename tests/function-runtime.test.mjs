@@ -7,6 +7,7 @@ import { invokeLLM } from "../bin/structured-ai.mjs";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveFunctionEntry } from '../bin/function-entries.mjs';
 
 const source = `import {createClientFromRequest} from 'npm:@base44/sdk@0.8.44';
 export default async function(req) {
@@ -126,4 +127,21 @@ test("resposta estruturada da IA preserva o schema do aplicativo", async () => {
   } }, async () => '```json\n{"items":[{"sku":"ABC","quantity":2}],"metadata":{"source":"app"}}\n```');
   assert.deepEqual(result, { items: [{ sku: "ABC", quantity: 2 }], metadata: { source: "app" } });
   await assert.rejects(invokeLLM({ prompt: "x", response_json_schema: { type: "object", required: ["quantity"], properties: { quantity: { type: "integer" } } } }, async () => '{"quantity":"2"}'), /não corresponde/);
+});
+
+test('Deno.serve é adaptado sem expor ambiente, e formatos ambíguos são recusados', async () => {
+  const result = await runFunctionSource(`Deno.serve(async req => Response.json({method:req.method, deno:typeof Deno}));`, {}, null, () => assert.fail());
+  assert.deepEqual(result.data, { method: 'POST', deno: 'undefined' });
+  assert.throws(() => compileFunction(`export default ()=>{}; Deno.serve(()=>{});`), /ambos/);
+  assert.throws(() => compileFunction(`Deno.serve({port:8000},()=>{});`), /handler/);
+  const dir = mkdtempSync(join(tmpdir(), 'moon-fn-formats-'));
+  try {
+    mkdirSync(join(dir, 'functions'));
+    mkdirSync(join(dir, 'base44/functions/echo'), { recursive: true });
+    writeFileSync(join(dir, 'functions/echo.ts'), 'export default ()=>Response.json({});');
+    assert.equal(resolveFunctionEntry(dir, 'echo'), join(dir, 'functions/echo.ts'));
+    assert.throws(() => resolveFunctionEntry(dir, '../echo'), /inválido/);
+    writeFileSync(join(dir, 'base44/functions/echo/entry.ts'), 'export default ()=>Response.json({});');
+    assert.throws(() => resolveFunctionEntry(dir, 'echo'), /ambígua/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

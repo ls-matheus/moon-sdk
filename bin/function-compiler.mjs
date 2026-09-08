@@ -13,6 +13,10 @@ export function compileFunction(source, entryPath = null, projectDir = null) {
     const record = modules[id] = { code: '', dependencies: Object.create(null) };
     const parsed = ts.createSourceFile(file || 'entry.ts', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     if (parsed.parseDiagnostics.length) throw new Error('Função contém erros de sintaxe.');
+    const serveCalls = parsed.statements.filter(node => ts.isExpressionStatement(node) && ts.isCallExpression(node.expression) && node.expression.expression.getText(parsed) === 'Deno.serve');
+    if (serveCalls.length > 1) throw new Error('A função deve registrar apenas um handler Deno.serve.');
+    if (serveCalls.length && parsed.statements.some(node => ts.isExportAssignment(node) || node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.DefaultKeyword))) throw new Error('Use export default ou Deno.serve, não ambos.');
+    for (const node of serveCalls) if (node.expression.arguments.length !== 1) throw new Error('Deno.serve local aceita apenas o handler.');
     const dependency = specifier => {
       if (/^(?:npm:)?@base44\/sdk(?:@[0-9.]+)?$/.test(specifier)) return '@sdk';
       if (!specifier.startsWith('.') || !file || !root) throw new Error('Esta função usa dependências ainda não suportadas localmente: ' + specifier);
@@ -37,7 +41,19 @@ export function compileFunction(source, entryPath = null, projectDir = null) {
       ts.forEachChild(node, visit);
     }
     visit(parsed);
-    record.code = ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+    record.code = ts.transpileModule(text, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+      transformers: { before: [context => sourceFile => {
+        const visit = node => {
+          if (ts.isExpressionStatement(node) && ts.isCallExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.expression.getText(sourceFile) === 'Deno' && node.expression.expression.name.text === 'serve') {
+            return context.factory.createExpressionStatement(context.factory.createAssignment(
+              context.factory.createPropertyAccessExpression(context.factory.createIdentifier('exports'), 'default'), node.expression.arguments[0]));
+          }
+          return ts.visitEachChild(node, visit, context);
+        };
+        return ts.visitNode(sourceFile, visit);
+      }] },
+    }).outputText;
     return id;
   }
   const entryId = compile(source, entryPath && realpathSync(entryPath));

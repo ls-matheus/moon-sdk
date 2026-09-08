@@ -1,0 +1,563 @@
+{
+  "package": "@base44/sdk",
+  "version": "0.8.48",
+  "source": "https://github.com/base44/javascript-sdk",
+  "hashes": {
+    "src/client.types.ts": "d86dd23ab8fa66c681d6688fb73f0c6e0c5f8ddcc88db72fea8f5b241e1512f4",
+    "src/modules/actors.types.ts": "94419b6126d61dee8d28c72440581e5ea602921e94a2eb193c5eac63314ca99e",
+    "src/modules/agents.types.ts": "994e4d9514417c10fc5fdaaa4afaede958251df909b370bfa84952ac7e768d37",
+    "src/modules/ai-gateway.types.ts": "f21ce0f0116863a13935af21669717c752bd8fc04d60ce14296cef359036e530",
+    "src/modules/analytics.types.ts": "1ceea523a0f4368fba7210f28d0c54af37a2cf6b2a5873763b62309866f71462",
+    "src/modules/app-logs.types.ts": "ba7cd8cf7d25696808baac1d476a88d88cfe809ea1a9f2fda3eb6034ad95ba9f",
+    "src/modules/app.types.ts": "7f8cfcb8d3cc4e27255b3b72f2030a51b960865bd9cdaa3840a0941900349d91",
+    "src/modules/auth.types.ts": "ad355cdb01615acd9e92f1228b3ef5cf4e7ec3cdc816d8a121b15a923a758c2f",
+    "src/modules/connectors.types.ts": "ed05b40a7a2fd053d4e062efb33fcfb9bb398f7381d7f3142d67ba73a3a05478",
+    "src/modules/custom-integrations.types.ts": "5b9ae7a7530e38044c820a4338f3cf4dfef939813ab16cc8711213d60168484c",
+    "src/modules/entities.types.ts": "41b89dd50b4d9871b70c339099b5738fc3163ce67f733e0ee2ab35f15758a65c",
+    "src/modules/functions.types.ts": "30bc35ebd7fa183ecba243227bf421a482b171bdef4246a5f5a6c070f1cb0739",
+    "src/modules/integrations.types.ts": "9fb802092882263cddb799a8dc210a880485762d4c5c8940e0df6fc5e4dc0c8b",
+    "src/modules/sso.types.ts": "cfbc9da2348f42da69866bd667b37f79557615d9f27fab03513e5d353f5017ca",
+    "src/index.ts": "d27aad54ac6b80499990267984eedd8317ac6886eb309e82c320a73dba6e1f23"
+  },
+  "exports": [
+    "createClient",
+    "createClientFromRequest",
+    "Base44Error",
+    "getAccessToken",
+    "saveAccessToken",
+    "removeAccessToken",
+    "getLoginUrl",
+    "Actor"
+  ],
+  "interfaces": {
+    "Base44Client": {
+      "file": "src/client.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "agents",
+          "kind": "property",
+          "signature": "agents: AgentsModule;"
+        },
+        {
+          "name": "aiGateway",
+          "kind": "property",
+          "signature": "aiGateway: AiGatewayModule;"
+        },
+        {
+          "name": "analytics",
+          "kind": "property",
+          "signature": "analytics: AnalyticsModule;"
+        },
+        {
+          "name": "appLogs",
+          "kind": "property",
+          "signature": "appLogs: AppLogsModule;"
+        },
+        {
+          "name": "app",
+          "kind": "property",
+          "signature": "app: AppModule;"
+        },
+        {
+          "name": "actors",
+          "kind": "property",
+          "signature": "actors: ActorsModule;"
+        },
+        {
+          "name": "auth",
+          "kind": "property",
+          "signature": "auth: AuthModule;"
+        },
+        {
+          "name": "connectors",
+          "kind": "property",
+          "signature": "connectors: UserConnectorsModule;"
+        },
+        {
+          "name": "entities",
+          "kind": "property",
+          "signature": "entities: EntitiesModule;"
+        },
+        {
+          "name": "functions",
+          "kind": "property",
+          "signature": "functions: FunctionsModule;"
+        },
+        {
+          "name": "integrations",
+          "kind": "property",
+          "signature": "integrations: IntegrationsModule;"
+        },
+        {
+          "name": "cleanup",
+          "kind": "method",
+          "signature": "cleanup: () => void;"
+        },
+        {
+          "name": "fetchWithAuth",
+          "kind": "method",
+          "signature": "fetchWithAuth(path: string, init?: FetchWithAuthInit): Promise<Response>;"
+        },
+        {
+          "name": "setToken",
+          "kind": "method",
+          "signature": "setToken(newToken: string): void;"
+        },
+        {
+          "name": "getConfig",
+          "kind": "method",
+          "signature": "getConfig(): { serverUrl: string; appId: string; requiresAuth: boolean };"
+        },
+        {
+          "name": "asServiceRole",
+          "kind": "property",
+          "signature": "readonly asServiceRole: { /** {@link AgentsModule | Agents module} with elevated permissions. */ agents: AgentsModule; /** {@link AiGatewayModule | AI Gateway module} with the service-role token. */ aiGateway: AiGatewayModule; /** {@link AppLogsModule | App logs module} with elevated permissions. */ appLogs: AppLogsModule; /** {@link ConnectorsModule | Connectors module} for OAuth token retrieval. */ connectors: ConnectorsModule; /** {@link EntitiesModule | Entities module} with elevated permissions. */ entities: EntitiesModule; /** {@link FunctionsModule | Functions module} with elevated permissions. */ functions: FunctionsModule; /** {@link IntegrationsModule | Integrations module} with elevated permissions. */ integrations: IntegrationsModule; /** {@link SsoModule | SSO module} for generating SSO tokens. */ sso: SsoModule; /** Cleanup function to disconnect WebSocket connections. */ cleanup: () => void; };"
+        }
+      ]
+    },
+    "Connection": {
+      "file": "src/modules/actors.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "id",
+          "kind": "property",
+          "signature": "readonly id: string;"
+        },
+        {
+          "name": "subscribe",
+          "kind": "method",
+          "signature": "subscribe(callback: (data: ToClientFor<N>) => void): ActorSubscription;"
+        },
+        {
+          "name": "send",
+          "kind": "method",
+          "signature": "send(data: ToServerFor<N>): void;"
+        },
+        {
+          "name": "close",
+          "kind": "method",
+          "signature": "close(): void;"
+        }
+      ]
+    },
+    "ActorRef": {
+      "file": "src/modules/actors.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "connect",
+          "kind": "method",
+          "signature": "connect(options?: ActorConnectOptions): Connection<N>;"
+        }
+      ]
+    },
+    "ActorClient": {
+      "file": "src/modules/actors.types.ts",
+      "extends": [],
+      "members": []
+    },
+    "ActorsModule": {
+      "file": "src/modules/actors.types.ts",
+      "extends": [],
+      "members": []
+    },
+    "AgentsModule": {
+      "file": "src/modules/agents.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "getConversations",
+          "kind": "method",
+          "signature": "getConversations(): Promise<AgentConversation[]>;"
+        },
+        {
+          "name": "getConversation",
+          "kind": "method",
+          "signature": "getConversation( conversationId: string ): Promise<AgentConversation | undefined>;"
+        },
+        {
+          "name": "listConversations",
+          "kind": "method",
+          "signature": "listConversations( filterParams: ModelFilterParams ): Promise<AgentConversation[]>;"
+        },
+        {
+          "name": "createConversation",
+          "kind": "method",
+          "signature": "createConversation( conversation: CreateConversationParams ): Promise<AgentConversation>;"
+        },
+        {
+          "name": "addMessage",
+          "kind": "method",
+          "signature": "addMessage( conversation: AgentConversation, message: Partial<AgentMessage> ): Promise<AgentMessage>;"
+        },
+        {
+          "name": "subscribeToConversation",
+          "kind": "method",
+          "signature": "subscribeToConversation( conversationId: string, onUpdate?: (conversation: AgentConversation) => void ): () => void;"
+        },
+        {
+          "name": "getWhatsAppConnectURL",
+          "kind": "method",
+          "signature": "getWhatsAppConnectURL(agentName: AgentName): string;"
+        },
+        {
+          "name": "getTelegramConnectURL",
+          "kind": "method",
+          "signature": "getTelegramConnectURL(agentName: AgentName): string;"
+        }
+      ]
+    },
+    "AiGatewayModule": {
+      "file": "src/modules/ai-gateway.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "connection",
+          "kind": "method",
+          "signature": "connection(): AiGatewayConnection;"
+        }
+      ]
+    },
+    "AnalyticsModule": {
+      "file": "src/modules/analytics.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "track",
+          "kind": "method",
+          "signature": "track(params: TrackEventParams): void;"
+        }
+      ]
+    },
+    "AppLogsModule": {
+      "file": "src/modules/app-logs.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "logUserInApp",
+          "kind": "method",
+          "signature": "logUserInApp(pageName: string): Promise<void>;"
+        },
+        {
+          "name": "fetchLogs",
+          "kind": "method",
+          "signature": "fetchLogs(params?: Record<string, any>): Promise<any>;"
+        },
+        {
+          "name": "getStats",
+          "kind": "method",
+          "signature": "getStats(params?: Record<string, any>): Promise<any>;"
+        }
+      ]
+    },
+    "AppModule": {
+      "file": "src/modules/app.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "getPublicSettings",
+          "kind": "method",
+          "signature": "getPublicSettings(): Promise<AppPublicSettingsResponse>;"
+        }
+      ]
+    },
+    "AuthModule": {
+      "file": "src/modules/auth.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "me",
+          "kind": "method",
+          "signature": "me(): Promise<User>;"
+        },
+        {
+          "name": "updateMe",
+          "kind": "method",
+          "signature": "updateMe( data: Record<string, any> ): Promise<User>;"
+        },
+        {
+          "name": "redirectToLogin",
+          "kind": "method",
+          "signature": "redirectToLogin(nextUrl: string): void;"
+        },
+        {
+          "name": "loginWithProvider",
+          "kind": "method",
+          "signature": "loginWithProvider(provider: string, fromUrl?: string): void;"
+        },
+        {
+          "name": "logout",
+          "kind": "method",
+          "signature": "logout(redirectUrl?: string): void;"
+        },
+        {
+          "name": "setToken",
+          "kind": "method",
+          "signature": "setToken(token: string, saveToStorage?: boolean): void;"
+        },
+        {
+          "name": "loginViaEmailPassword",
+          "kind": "method",
+          "signature": "loginViaEmailPassword( email: string, password: string, turnstileToken?: string ): Promise<LoginResponse>;"
+        },
+        {
+          "name": "isAuthenticated",
+          "kind": "method",
+          "signature": "isAuthenticated(): Promise<boolean>;"
+        },
+        {
+          "name": "inviteUser",
+          "kind": "method",
+          "signature": "inviteUser(userEmail: string, role: string): Promise<any>;"
+        },
+        {
+          "name": "register",
+          "kind": "method",
+          "signature": "register(params: RegisterParams): Promise<any>;"
+        },
+        {
+          "name": "verifyOtp",
+          "kind": "method",
+          "signature": "verifyOtp(params: VerifyOtpParams): Promise<any>;"
+        },
+        {
+          "name": "resendOtp",
+          "kind": "method",
+          "signature": "resendOtp(email: string): Promise<any>;"
+        },
+        {
+          "name": "resetPasswordRequest",
+          "kind": "method",
+          "signature": "resetPasswordRequest(email: string): Promise<any>;"
+        },
+        {
+          "name": "resetPassword",
+          "kind": "method",
+          "signature": "resetPassword(params: ResetPasswordParams): Promise<any>;"
+        },
+        {
+          "name": "changePassword",
+          "kind": "method",
+          "signature": "changePassword(params: ChangePasswordParams): Promise<any>;"
+        }
+      ]
+    },
+    "InternalAuthModule": {
+      "file": "src/modules/auth.types.ts",
+      "extends": [
+        "AuthModule"
+      ],
+      "members": [
+        {
+          "name": "hasToken",
+          "kind": "method",
+          "signature": "hasToken(): boolean;"
+        }
+      ]
+    },
+    "ConnectorsModule": {
+      "file": "src/modules/connectors.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "getAccessToken",
+          "kind": "method",
+          "signature": "getAccessToken(integrationType: ConnectorIntegrationType): Promise<string>;"
+        },
+        {
+          "name": "getConnection",
+          "kind": "method",
+          "signature": "getConnection( integrationType: ConnectorIntegrationType, ): Promise<ConnectorConnectionResponse>;"
+        },
+        {
+          "name": "getWorkspaceConnection",
+          "kind": "method",
+          "signature": "getWorkspaceConnection( connectorId: string, ): Promise<ConnectorConnectionResponse>;"
+        },
+        {
+          "name": "getCurrentAppUserAccessToken",
+          "kind": "method",
+          "signature": "getCurrentAppUserAccessToken(connectorId: string): Promise<string>;"
+        },
+        {
+          "name": "getCurrentAppUserConnection",
+          "kind": "method",
+          "signature": "getCurrentAppUserConnection( connectorId: string, ): Promise<AppUserConnectorConnectionResponse>;"
+        },
+        {
+          "name": "callApi",
+          "kind": "method",
+          "signature": "callApi<T = unknown>( integrationType: ConnectorIntegrationType, request: ConnectorApiRequest, ): Promise<ConnectorApiResponse<T>>;"
+        }
+      ]
+    },
+    "UserConnectorsModule": {
+      "file": "src/modules/connectors.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "connectAppUser",
+          "kind": "method",
+          "signature": "connectAppUser(connectorId: string): Promise<string>;"
+        },
+        {
+          "name": "disconnectAppUser",
+          "kind": "method",
+          "signature": "disconnectAppUser(connectorId: string): Promise<void>;"
+        }
+      ]
+    },
+    "CustomIntegrationsModule": {
+      "file": "src/modules/custom-integrations.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "call",
+          "kind": "method",
+          "signature": "call( slug: string, operationId: string, params?: CustomIntegrationCallParams ): Promise<CustomIntegrationCallResponse>;"
+        }
+      ]
+    },
+    "EntityHandler": {
+      "file": "src/modules/entities.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "list",
+          "kind": "method",
+          "signature": "list<K extends keyof T = keyof T>( sort?: SortField<T>, limit?: number, skip?: number, fields?: K[], ): Promise<Pick<T, K>[]>;"
+        },
+        {
+          "name": "filter",
+          "kind": "method",
+          "signature": "filter<K extends keyof T = keyof T>( query: EntityFilterQuery<T>, sort?: SortField<T>, limit?: number, skip?: number, fields?: K[], ): Promise<Pick<T, K>[]>;"
+        },
+        {
+          "name": "get",
+          "kind": "method",
+          "signature": "get(id: string): Promise<T>;"
+        },
+        {
+          "name": "create",
+          "kind": "method",
+          "signature": "create(data: Partial<T>): Promise<T>;"
+        },
+        {
+          "name": "update",
+          "kind": "method",
+          "signature": "update(id: string, data: Partial<T>): Promise<T>;"
+        },
+        {
+          "name": "delete",
+          "kind": "method",
+          "signature": "delete(id: string): Promise<DeleteResult>;"
+        },
+        {
+          "name": "deleteMany",
+          "kind": "method",
+          "signature": "deleteMany(query: Partial<T>): Promise<DeleteManyResult>;"
+        },
+        {
+          "name": "bulkCreate",
+          "kind": "method",
+          "signature": "bulkCreate(data: Partial<T>[]): Promise<T[]>;"
+        },
+        {
+          "name": "updateMany",
+          "kind": "method",
+          "signature": "updateMany( query: Partial<T>, data: Record<string, Record<string, any>>, ): Promise<UpdateManyResult>;"
+        },
+        {
+          "name": "bulkUpdate",
+          "kind": "method",
+          "signature": "bulkUpdate(data: (Partial<T> & { id: string })[]): Promise<T[]>;"
+        },
+        {
+          "name": "importEntities",
+          "kind": "method",
+          "signature": "importEntities(file: File): Promise<ImportResult<T>>;"
+        },
+        {
+          "name": "subscribe",
+          "kind": "method",
+          "signature": "subscribe(callback: RealtimeCallback<T>): () => void;"
+        }
+      ]
+    },
+    "FunctionsModule": {
+      "file": "src/modules/functions.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "invoke",
+          "kind": "method",
+          "signature": "invoke(functionName: FunctionName, data?: Record<string, any>): Promise<any>;"
+        },
+        {
+          "name": "fetch",
+          "kind": "method",
+          "signature": "fetch(path: string, init?: FunctionsFetchInit): Promise<Response>;"
+        }
+      ]
+    },
+    "CoreIntegrations": {
+      "file": "src/modules/integrations.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "InvokeLLM",
+          "kind": "method",
+          "signature": "InvokeLLM(params: InvokeLLMParams): Promise<string | object>;"
+        },
+        {
+          "name": "GenerateImage",
+          "kind": "method",
+          "signature": "GenerateImage(params: GenerateImageParams): Promise<GenerateImageResult>;"
+        },
+        {
+          "name": "UploadFile",
+          "kind": "method",
+          "signature": "UploadFile(params: UploadFileParams): Promise<UploadFileResult>;"
+        },
+        {
+          "name": "SendEmail",
+          "kind": "method",
+          "signature": "SendEmail(params: SendEmailParams): Promise<SendEmailResult>;"
+        },
+        {
+          "name": "ExtractDataFromUploadedFile",
+          "kind": "method",
+          "signature": "ExtractDataFromUploadedFile( params: ExtractDataFromUploadedFileParams, ): Promise<ExtractDataFromUploadedFileResult>;"
+        },
+        {
+          "name": "UploadPrivateFile",
+          "kind": "method",
+          "signature": "UploadPrivateFile( params: UploadPrivateFileParams, ): Promise<UploadPrivateFileResult>;"
+        },
+        {
+          "name": "CreateFileSignedUrl",
+          "kind": "method",
+          "signature": "CreateFileSignedUrl( params: CreateFileSignedUrlParams, ): Promise<CreateFileSignedUrlResult>;"
+        }
+      ]
+    },
+    "SsoModule": {
+      "file": "src/modules/sso.types.ts",
+      "extends": [],
+      "members": [
+        {
+          "name": "getAccessToken",
+          "kind": "method",
+          "signature": "getAccessToken(userid: string): Promise<SsoAccessTokenResponse>;"
+        },
+        {
+          "name": "getIdToken",
+          "kind": "method",
+          "signature": "getIdToken(userid: string): Promise<string>;"
+        }
+      ]
+    }
+  }
+}

@@ -92,18 +92,25 @@ const server = createServer((request, response) => {
     });
     return;
   }
-  if (request.method === "POST" && (request.url === "/api/ai/chat" || request.url === "/api/ai/invoke" || request.url.startsWith("/api/functions/"))) {
-    let raw = "", size = 0, oversized = false;
-    request.on("data", (chunk) => { size += chunk.length; if (size > 1048576) {oversized = true; return;} raw += chunk; });
+  if (request.url.startsWith('/api/functions/') || request.method === "POST" && (request.url === "/api/ai/chat" || request.url === "/api/ai/invoke")) {
+    const chunks = []; let size = 0, oversized = false;
+    request.on("data", chunk => { size += chunk.length; if (size > 1048576) { oversized = true; return; } chunks.push(chunk); });
     request.on("end", async () => {
       try {
         if (oversized) throw new Error("Requisição excede 1 MB.");
         const token = (request.headers.authorization || "").replace(/^Bearer /, "");
-        const payload = JSON.parse(raw || "{}");
         if (request.url.startsWith("/api/functions/")) {
-          const result = await invokeLocalFunction(decodeURIComponent(request.url.slice("/api/functions/".length)), payload, token, loadConfig(), process.env, projectDir, askAi);
-          response.statusCode = result.status; response.end(JSON.stringify(result.data)); return;
+          const url = new URL(request.url, 'http://localhost');
+          const name = decodeURIComponent(url.pathname.slice('/api/functions/'.length));
+          const headers = Object.fromEntries(Object.entries(request.headers).filter(([key]) => !['host', 'connection', 'transfer-encoding', 'content-length'].includes(key)));
+          const result = await invokeLocalFunction(name, null, token, loadConfig(), process.env, projectDir, askAi, {
+            url: url.href, method: request.method, headers, body: Buffer.concat(chunks),
+          });
+          response.statusCode = result.status;
+          for (const [key, value] of result.headers) if (!/^(?:access-control-|connection$|transfer-encoding$|content-length$|keep-alive$|upgrade$)/i.test(key)) response.setHeader(key, value);
+          response.end(request.method === 'HEAD' ? undefined : Buffer.from(result.body)); return;
         }
+        const payload = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
         if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         await verifyUser(token, loadConfig(), process.env);
         if (request.url === '/api/ai/invoke') {

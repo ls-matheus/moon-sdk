@@ -320,98 +320,19 @@ function findRunnableProject(directory) {
 
 async function migrateImportedProject(appDir) {
   const packagePath = resolve(appDir, "package.json");
-  const clientPath = ["src/api/base44Client.js", "src/api/base44Client.ts", "src/lib/base44Client.js", "src/lib/base44Client.ts"]
-    .map((relativePath) => resolve(appDir, relativePath)).find((candidate) => existsSync(candidate));
   if (!existsSync(packagePath)) return;
-  const sdkPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
-  const install = spawnSync(npmCommand, ["install", "--save", windows ? `"${sdkPath}"` : sdkPath], { cwd: appDir, stdio: "inherit", shell: windows });
-  if (install.status !== 0) throw new Error("não foi possível instalar o Moon no projeto importado");
   const activeConfig = readConfig();
-  writeEnvValues(withRuntimeAliases(noDatabase ? "none" : activeConfig.provider, { ...readEnvValues(activeConfig.env || []), ...(activeConfig.authProvider ? { MOON_AUTH_PROVIDER: activeConfig.authProvider } : {}) }), resolve(appDir, ".env.local"));
-  const viteConfigPath = ["vite.config.js", "vite.config.mjs", "vite.config.ts"]
-    .map((relativePath) => resolve(appDir, relativePath)).find((candidate) => existsSync(candidate));
-  if (viteConfigPath && (!readFileSync(viteConfigPath, "utf8").includes("alias: { \"@\":") || readFileSync(viteConfigPath, "utf8").includes("@base44/vite-plugin") || !readFileSync(viteConfigPath, "utf8").includes("127.0.0.1:8787"))) {
-    writeFileSync(viteConfigPath, `import path from "node:path";
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
-
-export default defineConfig({
-  plugins: [react()],
-  resolve: { alias: { "@": path.resolve(process.cwd(), "src") } },
-  server: { port: ${Number(process.env.MOON_FRONTEND_PORT || 5173)}, strictPort: true, proxy: { "/api": "http://127.0.0.1:${Number(process.env.MOON_BACKEND_PORT || 8787)}" } },
-});
-`);
-    const uninstall = spawnSync(npmCommand, ["uninstall", "@base44/vite-plugin"], { cwd: appDir, stdio: "inherit", shell: windows });
-    if (uninstall.status === 0) print("✓ Plugin de desenvolvimento antigo removido do Vite");
-  }
-  if (!clientPath) return;
-  const source = readFileSync(clientPath, "utf8");
-  if (!source.includes("@base44/sdk") && !source.includes("Configure a API de IA") && !source.includes("base44.app") && !source.includes("createMemoryAdapter") && !source.includes("createBrowserClient")) return;
-  const backupPath = clientPath + ".before-moon";
-  if (!existsSync(backupPath)) writeFileSync(backupPath, source);
-  const { installLoginBootstrap } = await import("./runtime-auth.mjs");
-  const loginUi = installLoginBootstrap(appDir, clientPath, noDatabase ? "none" : activeConfig.provider, activeConfig.authUi);
-  print(loginUi.mode === 'app' ? '✓ Tela de login do aplicativo preservada; autenticação pelo provedor configurado.' : '✓ Aplicativo sem login próprio: usando a tela padrão do Moon.');
+  const provider = noDatabase ? "none" : activeConfig.provider;
   const { discoverSchema } = await import("./database-schema.mjs");
-  let publicEntities = [];
-  try {
-    const discovered = discoverSchema(projectDir)?.schema;
-    if (discovered?.entities) {
-      publicEntities = Object.entries(discovered.entities)
-        .filter(([, entity]) => entity.access === "public")
-        .map(([name]) => name);
-    }
-  } catch { /* schema discovery is advisory */ }
-  writeFileSync(clientPath, `import { createBrowserClient } from "@moon/sdk";
-import { createFunctionInvoker, createLoginRedirect, createLLMInvoker } from "/src/moon-client-bridge.mjs";
-
-const sdk = createBrowserClient({
-  provider: import.meta.env.VITE_MOON_PROVIDER || "supabase",
-  authProvider: import.meta.env.VITE_MOON_AUTH_PROVIDER || undefined,
-  supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-  supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-  firebase: {
-    apiKey: import.meta.env.VITE_MOON_FIREBASE_API_KEY,
-    projectId: import.meta.env.VITE_MOON_FIREBASE_PROJECT_ID,
-    authDomain: import.meta.env.VITE_MOON_FIREBASE_AUTH_DOMAIN,
-    appId: import.meta.env.VITE_MOON_FIREBASE_APP_ID,
-  },
-  publicEntities: ${JSON.stringify(publicEntities)},
-});
-const auth = {
-  verifyOtp: params => sdk.auth.verifyOtp({ ...params, token: params.otpCode || params.token }),
-  resend: params => sdk.auth.resendOtp(params),
-};
-export const moonAuth = sdk.auth;
-export const base44 = {
-  auth: {
-    me: () => sdk.auth.me(), isAuthenticated: () => sdk.auth.isAuthenticated(),
-    loginViaEmailPassword: (email, password) => sdk.auth.loginViaEmailPassword(email, password),
-    register: (params) => sdk.auth.register({ ...params, options: { ...(params.options || {}), emailRedirectTo: window.location.origin } }), updateMe: (data) => sdk.auth.updateMe(data),
-    resetPasswordRequest: (email) => sdk.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin }), resetPassword: () => Promise.reject(new Error("Redefinição por token deve ser adaptada ao provedor escolhido.")),
-    logout: async () => { await sdk.auth.logout(); window.location.reload(); }, setToken: (token) => sdk.auth.setToken(token),
-    loginWithProvider: (provider, redirectTo) => sdk.auth.loginWithProvider(provider, redirectTo),
-    verifyOtp: (params) => auth.verifyOtp(params), resendOtp: (email) => auth.resend({ email, type: "signup" }),
-    onAuthStateChange: (callback) => sdk.auth.onChange(callback),
-    redirectToLogin: createLoginRedirect(${JSON.stringify(loginUi)}),
-  },
-  app: { getPublicSettings: async () => ({}) },
-  entities: sdk.entities,
-  integrations: { Core: { InvokeLLM: createLLMInvoker(sdk.auth) } },
-  functions: { invoke: createFunctionInvoker(sdk.auth) },
-  agents: {
-    createConversation: async () => { throw new Error("Agentes Base44 ainda não têm adaptação local com persistência. Execute moon inspect."); },
-    addMessage: async (conversation, message) => { const response = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (await sdk.auth.getAccessToken() || "") }, body: JSON.stringify({ messages: [...(conversation.messages || []), message] }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Falha ao consultar a IA."); const reply = { role: "assistant", content: data.content }; conversation.messages = [...(conversation.messages || []), message, reply]; return conversation; },
-    subscribeToConversation: () => { throw new Error("Assinatura de conversas Base44 não suportada localmente."); },
-  },
-};
-`);
-  const registerPath = resolve(appDir, "src/pages/Register.jsx");
-  if (existsSync(registerPath)) {
-    const registerSource = readFileSync(registerPath, "utf8");
-    writeFileSync(registerPath, registerSource.replace("setShowOtp(true);", "if (import.meta.env.VITE_MOON_DEV_AUTH_BYPASS === \"true\") window.location.href = safeReturnTo(); else setShowOtp(true);"));
-  }
-  print(`✓ Integração antiga substituída pelo Moon em ${appDir}`);
+  const schema = provider === 'none' ? null : discoverSchema(projectDir)?.schema;
+  const publicEntities = Object.entries(schema?.entities || {}).filter(([, entity]) => entity.access === "public").map(([name]) => name);
+  writeEnvValues(withRuntimeAliases(provider, { ...readEnvValues(activeConfig.env || []), ...(activeConfig.authProvider ? { MOON_AUTH_PROVIDER: activeConfig.authProvider } : {}) }), resolve(appDir, ".env.local"));
+  const { installPortableRuntime } = await import("./runtime-vite.mjs");
+  installPortableRuntime(appDir, { ...activeConfig, provider, publicEntities, frontendPort: process.env.MOON_FRONTEND_PORT, backendPort: process.env.MOON_BACKEND_PORT });
+  const sdkPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
+  const install = spawnSync(npmCommand, ["install", "--save", windows ? '\"' + sdkPath + '\"' : sdkPath], { cwd: appDir, stdio: "inherit", shell: windows });
+  if (install.status !== 0) throw new Error("N?o foi poss?vel instalar o Moon no projeto importado.");
+  print("SDK adaptado na c?pia local; configura??o do Vite e m?dulos do aplicativo preservados.");
 }
 
 function readEnvValues(keys) {
@@ -685,7 +606,8 @@ else if (command === "eject") importFromPlatform(["eject"]);
 else if (command === "doctor") doctor();
 else if (command === "inspect") {
   const { inspectProject, printInspection } = await import("./project-inspect.mjs");
-  const report = inspectProject(projectDir); printInspection(report, print);
+  const report = inspectProject(projectDir);
+  if (process.argv.includes('--json')) print(JSON.stringify(report, null, 2)); else printInspection(report, print);
   if (report.errors.length) process.exitCode = 1;
 }
 else if (command === "sync") {
