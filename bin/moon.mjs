@@ -65,6 +65,7 @@ function help() {
   print("  start [pasta]      prepara o projeto e inicia o app");
   print("  run [pasta]        configura o projeto e sobe backend + frontend locais");
   print("  run [pasta] --no-db inicia a apresentação sem conectar a nenhum banco");
+  print("  run [pasta] --network inicia o frontend acessível na rede local");
 }
 
 function readConfig() {
@@ -268,6 +269,7 @@ async function configureAi() {
 async function runLocalProcesses() {
   // configureAi can save credentials after the first environment load.
   loadEnvFile();
+  const network = process.argv.includes("--network");
   const serverPath = resolve(fileURLToPath(new URL(".", import.meta.url)), "local-server.mjs");
   let frontendDir = findRunnableProject(projectDir);
   if (frontendDir) {
@@ -277,7 +279,9 @@ async function runLocalProcesses() {
     await migrateImportedProject(frontendDir);
   }
   const backend = spawn(process.execPath, [serverPath], { cwd: projectDir, stdio: "inherit", env: process.env });
-  const frontend = frontendDir ? spawn(npmCommand, ["run", "dev"], { cwd: frontendDir, stdio: "inherit", env: process.env, shell: windows }) : null;
+  const frontendArgs = ["run", "dev"];
+  if (network) frontendArgs.push("--", "--host", "0.0.0.0");
+  const frontend = frontendDir ? spawn(npmCommand, frontendArgs, { cwd: frontendDir, stdio: "inherit", env: process.env, shell: windows }) : null;
   const stop = () => {
     stopProcessTree(backend);
     stopProcessTree(frontend);
@@ -289,7 +293,7 @@ async function runLocalProcesses() {
   if (frontend) frontend.once("error", (error) => { console.error(`Frontend não iniciou: ${error.message}`); stop(); process.exitCode = 1; });
   if (frontend) frontend.once("exit", (code) => { if (code && code !== 0 && code !== 143) console.error(`Frontend encerrou com código ${code}. Verifique a saída do Vite acima.`); });
   print(`Backend local: http://localhost:${process.env.MOON_BACKEND_PORT || 8787}`);
-  if (frontend) print(`Frontend local: confira o endereço mostrado pelo Vite (projeto: ${frontendDir})`);
+  if (frontend) print(`Frontend ${network ? "na rede: use o IP do computador na porta 5173" : "local: confira o endereço mostrado pelo Vite"} (projeto: ${frontendDir})`);
   else print("Frontend local: nenhum script dev encontrado");
 }
 
