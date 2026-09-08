@@ -36,6 +36,7 @@ test("não executa dependências ou imports dinâmicos não suportados",()=>{
   assert.throws(()=>compileFunction(`import fs from 'node:fs';export default ()=>{};`),/dependências/);
   assert.throws(()=>compileFunction(`import {createClientFromRequest} from '@base44/sdk';export default async()=>import('node:fs');`),/dinâmicos/);
 });
+test("functions.invoke envia token e preserva response.data; recusa sessão ausente",async()=>{
 test("functions.invoke envia token e preserva response.data; suporta chamadas públicas",async()=>{
   const invoke=createFunctionInvoker({getAccessToken:async()=>'USER_TOKEN'},async(url,options)=>{
     assert.equal(url,'/api/functions/assistente_notas');
@@ -43,6 +44,7 @@ test("functions.invoke envia token e preserva response.data; suporta chamadas p�
     return Response.json({reply:'ok'});
   });
   assert.deepEqual(await invoke('assistente_notas',{message:'x'}),{status:200,data:{reply:'ok'}});
+  await assert.rejects(createFunctionInvoker({getAccessToken:async()=>undefined},()=>assert.fail())('test'),/Entre na sua conta/);
   const anonInvoke=createFunctionInvoker({getAccessToken:async()=>undefined},async(url,options)=>{
     assert.equal(url,'/api/functions/aiOrder');
     assert.equal(options.headers.Authorization,undefined);

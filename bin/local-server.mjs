@@ -34,7 +34,7 @@ async function askAi(messages) {
   const provider = (process.env.MOON_AI_PROVIDER || "openai").toLowerCase();
   const key = process.env.MOON_AI_API_KEY;
   if (!key) throw new Error("API de IA não configurada");
-  const model = process.env.MOON_AI_MODEL || (provider === "gemini" ? "gemini-3.6-flash" : "gpt-4o-mini");
+  const model = process.env.MOON_AI_MODEL || (provider === "gemini" ? "gemini-2.0-flash" : "gpt-4o-mini");
   const base = process.env.MOON_AI_BASE_URL || (provider === "gemini" ? "https://generativelanguage.googleapis.com/v1beta" : provider === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
   let url = `${base.replace(/\/$/, "")}/chat/completions`;
   let headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -82,6 +82,9 @@ const server = createServer((request, response) => {
   }
   if (request.method === "OPTIONS") { response.statusCode = 204; response.end(); return; }
   if (request.method === "POST" && request.url === "/api/database") {
+    if (origin && !isAllowedOrigin(origin)) {
+      response.statusCode = 403; response.end(JSON.stringify({ error: "Origem não permitida." })); return;
+    }
     let raw = "", size = 0, oversized = false;
     request.on("data", chunk => {
       size += chunk.length;
@@ -110,12 +113,12 @@ const server = createServer((request, response) => {
       try {
         if (oversized) throw new Error("Requisição excede 1 MB.");
         const token = (request.headers.authorization || "").replace(/^Bearer /, "");
+        if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         const payload = JSON.parse(raw || "{}");
         if (request.url.startsWith("/api/functions/")) {
           const result = await invokeLocalFunction(request.url.slice("/api/functions/".length), payload, token, loadConfig(), process.env, projectDir, askAi);
           response.statusCode = result.status; response.end(JSON.stringify(result.data)); return;
         }
-        if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         await verifyUser(token, loadConfig(), process.env);
         const content = await askAi(Array.isArray(payload.messages) ? payload.messages : []);
         response.end(JSON.stringify({ content }));
