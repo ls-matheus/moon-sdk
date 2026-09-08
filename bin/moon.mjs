@@ -574,7 +574,12 @@ async function testConfigured() {
     return result.ok;
   } catch (error) {
     const detail = error instanceof Error && error.cause?.code ? ` (${error.cause.code})` : "";
-    const message = `não foi possível conectar: ${error instanceof Error ? error.message : String(error)}${detail}`;
+    const code = error?.cause?.code || error?.code;
+    const message = code === "ENOTFOUND"
+      ? "não foi possível resolver o domínio do serviço. Verifique a internet/DNS e se a URL do projeto ainda existe"
+      : code === "ECONNREFUSED"
+        ? "o serviço recusou a conexão. Verifique a URL, a porta e se o projeto está ativo"
+        : `não foi possível conectar: ${error instanceof Error ? error.message : String(error)}${detail}`;
     stopSpinner(false, ` — ${message}`);
     print(`  ${message}`);
     process.exitCode = 1;
