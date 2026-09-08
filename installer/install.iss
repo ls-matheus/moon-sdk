@@ -1,94 +1,56 @@
-; Instalador visual oficial do Moon SDK.
-; Gere SDKs/moon-sdk/install.exe abrindo este arquivo no Inno Setup 6 no Windows.
-
-#define MoonVersion "0.1.0"
+; Per-user installer: no UAC, MSI or machine-wide environment changes.
+#define MoonVersion "0.2.0"
 #ifndef MoonCommit
   #define MoonCommit "main"
 #endif
-#define MoonRepository "https://github.com/ls-matheus/moon-sdk/archive/" + MoonCommit + ".zip"
 
 [Setup]
-AppId={{C4E8C18E-7C0E-4D14-9A1F-1B5C1B6A4B90}
+AppId=MoonSDK-User
 AppName=Moon SDK
 AppVersion={#MoonVersion}
 AppPublisher=Moon
-DefaultDirName={autopf}\Moon SDK
+DefaultDirName={localappdata}\Programs\Moon SDK
 DefaultGroupName=Moon SDK
 OutputDir=..\
 OutputBaseFilename=install
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-Uninstallable=yes
-UninstallDisplayName=Moon SDK
-UninstallDisplayIcon={uninstallexe}
+ChangesEnvironment=yes
+UninstallDisplayName=Moon SDK (usuario atual)
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
-[Icons]
-Name: "{group}\Desinstalar Moon SDK"; Filename: "{uninstallexe}"; WorkingDir: "{app}"
+[Files]
+Source: "install-user.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
-[Run]
-; O SDK é baixado pelo commit compilado para que o instalador seja reprodutível.
-Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ""$ErrorActionPreference='Stop'; $zip=Join-Path $env:TEMP 'moon-sdk.zip'; $tmp=Join-Path $env:TEMP 'moon-sdk-extract'; if (Test-Path $tmp) {{ Remove-Item $tmp -Recurse -Force }}; Invoke-WebRequest -UseBasicParsing '{#MoonRepository}' -OutFile $zip; if (!(Test-Path $zip)) {{ throw 'Download do Moon SDK falhou.' }}; Expand-Archive -Path $zip -DestinationPath $tmp -Force; $source=(Get-ChildItem -Path $tmp -Directory | Where-Object Name -like 'moon-sdk-*'); if ($source.Count -ne 1) {{ throw 'O arquivo do GitHub não contém exatamente uma pasta do Moon SDK.' }}; New-Item -ItemType Directory -Path '{app}\sdk' -Force | Out-Null; Copy-Item (Join-Path $source.FullName '*') '{app}\sdk' -Recurse -Force; Remove-Item $zip -Force -ErrorAction SilentlyContinue; Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue"""; StatusMsg: "Baixando Moon SDK do GitHub..."; Flags: runhidden waituntilterminated
-; Node.js LTS é baixado e instalado de forma silenciosa antes das dependências.
-Filename: "powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ""$ErrorActionPreference='Stop'; $u='https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi'; $p=Join-Path $env:TEMP 'moon-node.msi'; Invoke-WebRequest -UseBasicParsing $u -OutFile $p; $r=Start-Process msiexec.exe -ArgumentList '/i',$p,'/qn','/norestart' -Wait -PassThru; Remove-Item $p -Force -ErrorAction SilentlyContinue; if ($r.ExitCode -ne 0) {{ exit $r.ExitCode }}"""; StatusMsg: "Baixando e instalando Node.js LTS..."; Flags: runhidden waituntilterminated
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -Command ""$ErrorActionPreference='Stop'; $npm=(Get-Command npm.cmd -ErrorAction Stop).Source; $target='{app}\sdk\bin\moon.mjs'; if (!(Test-Path $target)) {{ throw 'O arquivo principal do Moon SDK não foi encontrado.' }}; $bin=Join-Path $env:APPDATA 'npm'; $q=[char]34; $root=(& $npm root --global).Trim(); $old=Join-Path $root '@moon\sdk'; $oldItem=Get-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue; if ($oldItem) {{ Remove-Item -LiteralPath $old -Recurse -Force }}; New-Item -ItemType Directory -Path $bin -Force | Out-Null; Set-Content -Path (Join-Path $bin 'moon.cmd') -Encoding ascii -Value ('@echo off' + [Environment]::NewLine + 'node ' + $q + $target + $q + ' %*'); Set-Content -Path (Join-Path $bin 'moon.ps1') -Encoding ascii -Value ('& node ' + $q + $target + $q + ' @args'); & $npm install --global '{app}\sdk' '@base44/sdk' --force; if ($LASTEXITCODE -ne 0) {{ throw 'A instalação das dependências npm falhou.' }}; if (!(Test-Path (Join-Path $bin 'moon.cmd'))) {{ throw 'O launcher Moon não foi criado.' }}"""; StatusMsg: "Reparando e instalando Moon SDK, Base44 SDK e dependências..."; Flags: runhidden waituntilterminated
+[Icons]
+Name: "{group}\Desinstalar Moon SDK"; Filename: "{uninstallexe}"
+
+[UninstallRun]
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-user.ps1"" -Destination ""{app}"" -Uninstall"; Flags: runhidden waituntilterminated
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\releases"
+Type: filesandordirs; Name: "{app}\bin"
+Type: files; Name: "{app}\install.log"
 
 [Code]
-const
-  EnvironmentKey = 'SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment';
-
-procedure UpdatePath(RootKey: Integer; AddEntries: Boolean);
-var
-  PathValue: string;
-  Entries: array[0..2] of string;
-  I: Integer;
-begin
-  Entries[0] := ExpandConstant('{app}\sdk');
-  Entries[1] := ExpandConstant('{userappdata}\npm');
-  Entries[2] := ExpandConstant('{app}\sdk');
-  if not RegQueryStringValue(RootKey, EnvironmentKey, 'Path', PathValue) then
-    PathValue := '';
-
-  for I := 0 to 2 do begin
-    if AddEntries then begin
-      if Pos(';' + LowerCase(Entries[I]) + ';', ';' + LowerCase(PathValue) + ';') = 0 then
-      PathValue := Entries[I] + ';' + PathValue;
-    end else begin
-      StringChangeEx(PathValue, ';' + Entries[I], '', True);
-      StringChangeEx(PathValue, Entries[I], '', True);
-    end;
-  end;
-
-  while (Length(PathValue) > 0) and (PathValue[1] = ';') do
-    Delete(PathValue, 1, 1);
-  while (Length(PathValue) > 0) and (PathValue[Length(PathValue)] = ';') do
-    Delete(PathValue, Length(PathValue), 1);
-  RegWriteExpandStringValue(RootKey, EnvironmentKey, 'Path', PathValue);
-end;
-
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ExitCode: Integer;
 begin
   if CurStep = ssPostInstall then begin
-    UpdatePath(HKLM, True);
-    UpdatePath(HKCU, True);
-    MsgBox('Moon SDK instalado com sucesso.'#13#10#13#10 +
-      'Abra um novo terminal para que o PATH seja atualizado.'#13#10 +
-      'O comando moon já estará disponível nos novos terminais.', mbInformation, MB_OK);
+    WizardForm.StatusLabel.Caption := 'Instalando Node portatil e Moon para seu usuario...';
+    if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      ExpandConstant('-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{app}\install-user.ps1" -Destination "{app}" -Commit "{#MoonCommit}"'),
+      '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+      RaiseException('Nao foi possivel iniciar a instalacao.');
+    if ExitCode <> 0 then
+      RaiseException(ExpandConstant('Instalacao falhou. Consulte {app}\install.log e execute o instalador novamente.'));
   end;
-end;
-
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-begin
-  if CurUninstallStep = usPostUninstall then
-    begin
-      UpdatePath(HKLM, False);
-      UpdatePath(HKCU, False);
-      DeleteFile(ExpandConstant('{userappdata}\npm\moon.cmd'));
-      DeleteFile(ExpandConstant('{userappdata}\npm\moon.ps1'));
-    end;
 end;

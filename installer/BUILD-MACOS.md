@@ -1,32 +1,16 @@
-# Instalador macOS
+﻿# Instaladores macOS
 
-Execute `bash installer/build-macos.sh` em um Mac com Node.js 22 para gerar
-`Moon-SDK-Installer.pkg`. O build compila e inclui o SDK deste checkout,
-sem depender de uma publicação de @moon/sdk no npm.
+Execute `bash installer/build-macos.sh` em um Mac com Node.js 22. O build gera duas opções:
 
-O usuário abre o pacote no Installer e autoriza a instalação. Não é necessário
-ter Node.js previamente. O pacote é pequeno e baixa do GitHub Releases o Node.js
-22.23.2 da arquitetura do Mac e o Moon com todas as dependências prontas, além do Base44.
-É necessário acesso à internet durante a instalação; não há npm install no Mac.
-As dependências do Moon são preparadas com package-lock.json no build.
-Cada download é validado pelo SHA-256 gravado dentro do instalador.
+- `Moon-SDK-User-Installer.zip`: extraia e abra `Moon-SDK-Install.command`. Instala apenas para o usuário atual, sem `sudo` ou senha de administrador.
+- `Moon-SDK-Installer.pkg`: instalação para o sistema, com autorização de administrador.
 
-O build também gera macos-resources/. O workflow publica esses arquivos numa
-release de recursos exclusiva para cada execução (macos-resources-RUN-ATTEMPT),
-antes de testar instalação e reinstalação via download. Só depois publica o
-Moon-SDK-Installer.pkg na release latest (ou tag escolhida manualmente).
-As releases de recursos são pré-releases e não substituem a release principal.
-Não apague nem substitua os recursos: instaladores antigos usam as URLs e hashes
-da sua própria versão. Para build manual, defina RESOURCE_TAG e publique os
-arquivos de macos-resources nessa tag antes de distribuir o pacote.
+A opção por usuário guarda as versões em `~/Library/Application Support/Moon SDK/releases`, cria `~/.local/bin/moon` e adiciona essa pasta ao PATH em `.zprofile` e `.bash_profile`, sem duplicar a linha nas reinstalações. Abra um novo Terminal depois de instalar. O log fica em `~/Library/Application Support/Moon SDK/install.log`.
 
-O runtime fica em /usr/local/lib/moon-sdk/releases. A versão atual só é
-ativada depois que Node, npm, moon --help e a importação do SDK passam.
-Reinstalações mantêm a versão anterior. O launcher /usr/local/bin/moon usa
-o runtime próprio; instalações existentes de Node não são substituídas.
-O arquivo /etc/paths.d/moon-sdk contém caminhos, um por linha.
-Abra um novo Terminal após a instalação para atualizar o PATH.
+O `.pkg` usa `/usr/local/lib/moon-sdk/releases`, `/usr/local/bin/moon` e `/etc/paths.d/moon-sdk`. Seu log fica em `/var/log/moon-sdk-installer.log`.
 
-Falhas detalhadas ficam em /var/log/moon-sdk-installer.log. O workflow testa
-instalação e reinstalação antes de publicar, independentemente do Windows.
-O pacote ainda não é assinado nem notarizado com certificado Apple.
+Ambos baixam Node.js 22.23.2 para a arquitetura do Mac e o SDK com dependências prontas. Não é necessário Node previamente instalado nem executar npm install no Mac. Cada download é validado pelos hashes SHA-256 embutidos. A versão anterior é preservada; a nova só é ativada depois de validar Node, npm, o CLI e a importação do SDK.
+
+O workflow publica `macos-resources/` numa release exclusiva por execução, testa instalação e reinstalação das duas opções e só então publica os instaladores. Não remova essas releases de recursos: instaladores antigos dependem de suas URLs e hashes. Em builds manuais, defina `RESOURCE_TAG` e publique os recursos nessa tag antes de distribuir os instaladores.
+
+Os instaladores ainda não são assinados nem notarizados com certificado Apple. A instalação por usuário não altera políticas de segurança do macOS ou da organização.

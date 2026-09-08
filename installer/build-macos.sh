@@ -48,5 +48,14 @@ done
 printf '%s\n' "https://github.com/$repository/releases/download/$resource_tag" > "$work/scripts/resources-url.txt"
 cp "$work/scripts/resources.sha256" "$assets/resources.sha256"
 chmod 755 "$work/scripts/postinstall" "$work/scripts/install-runtime.sh"
+mkdir "$work/user-scripts"
+cp installer/pkg-scripts/install-user.sh "$work/scripts/install-runtime.sh" \
+  "$work/scripts/resources.sha256" "$work/scripts/resources-url.txt" "$work/user-scripts/"
+cat installer/user-command-header.sh > "$repo/Moon-SDK-Install.command"
+tar -czf "$work/user-scripts.tgz" -C "$work/user-scripts" .
+/usr/bin/base64 < "$work/user-scripts.tgz" >> "$repo/Moon-SDK-Install.command"
+chmod 755 "$repo/Moon-SDK-Install.command"
+# ZIP preserves the executable bit when the user extracts it in Finder.
+zip -j "$repo/Moon-SDK-User-Installer.zip" "$repo/Moon-SDK-Install.command"
 pkgbuild --nopayload --scripts "$work/scripts" --identifier com.moon.sdk.installer \
   --version "1.3.${GITHUB_RUN_NUMBER:-0}" "$output"

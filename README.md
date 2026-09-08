@@ -30,6 +30,11 @@ npm install github:ls-matheus/moon-sdk
 The package name is `@moon/sdk`; it is not currently published on the npm registry.
 Prebuilt Windows and macOS installers are available in [Releases](https://github.com/ls-matheus/moon-sdk/releases).
 
+- **Windows:** `install.exe` installs Moon and portable Node.js for your user, without an administrator password.
+- **macOS:** extract `Moon-SDK-User-Installer.zip` and open `Moon-SDK-Install.command` for installation without `sudo`. The `.pkg` is the system-wide alternative and requires administrator authorization.
+
+Both user installers configure your user PATH. Open a new terminal after installation.
+
 ## Quick Start
 
 Try the entity API with an in-memory database:

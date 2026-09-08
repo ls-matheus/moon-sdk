@@ -5,5 +5,7 @@ dist/**/*.tsbuildinfo
 .DS_Store
 *.pkg
 macos-resources/
+Moon-SDK-Install.command
+Moon-SDK-User-Installer.zip
 tests/generated-firestore.rules
 *-debug.log
