@@ -65,8 +65,11 @@ export function createBrowserClient(options) {
         database = createAdapter({ provider: "supabase", auth, async execute(request) {
                 const publicTable = options.publicEntities?.some(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`) === request.table);
                 const user = publicTable ? null : (await auth.getUser()).user;
-                if (!user && !publicTable)
+                if (!user && !publicTable) {
+                    if (request.action === "select")
+                        return { rows: [] };
                     throw new Error("Login necessário.");
+                }
                 if (publicTable) {
                     if (request.action !== "select")
                         throw new Error("Entidade pública permite apenas leitura.");
@@ -120,8 +123,11 @@ export function createBrowserClient(options) {
         database = createAdapter({ provider: options.provider, auth, async execute(request) {
                 const publicTable = options.publicEntities?.some(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`) === request.table);
                 const session = (await auth.getSession()).session;
-                if (!session && !publicTable)
+                if (!session && !publicTable) {
+                    if (request.action === "select")
+                        return { rows: [] };
                     throw new Error("Login necessário.");
+                }
                 if (publicTable && request.action !== "select")
                     throw new Error("Entidade pública permite apenas leitura.");
                 const headers = { "Content-Type": "application/json" };

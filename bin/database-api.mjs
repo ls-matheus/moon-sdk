@@ -33,9 +33,10 @@ export async function verifyUser(token, config, env) {
   return { id: user.id };
 }
 
-export function authorizeQuery(payload, schema, user) {
+export function authorizeQuery(payload, schema, user, options = {}) {
   const definition = Object.entries(schema.entities).find(([name]) => tableName(name) === payload?.table)?.[1];
-  if (!definition || !["owner", "public"].includes(definition.access)) throw new Error("Entidade indisponível para acesso pelo navegador.");
+  if (!definition) throw new Error("Entidade indisponível.");
+  if (!options.asServiceRole && !["owner", "public"].includes(definition.access)) throw new Error("Entidade indisponível para acesso pelo navegador.");
   if (!["select", "insert", "update", "delete"].includes(payload.action)) throw new Error("Operação inválida.");
   const fields = definition.fields;
   const operators = ["$eq", "$neq", "$gt", "$gte", "$lt", "$lte", "$in", "$is", "$ilike"];
@@ -46,6 +47,34 @@ export function authorizeQuery(payload, schema, user) {
   if (payload.order && !Object.hasOwn(fields, payload.order.field)) throw new Error("Ordenação inválida.");
   if (payload.limit != null && (!Number.isSafeInteger(payload.limit) || payload.limit < 0 || payload.limit > 1000)) throw new Error("Limite deve estar entre 0 e 1000.");
   if (payload.offset != null && (!Number.isSafeInteger(payload.offset) || payload.offset < 0 || payload.offset > 100000)) throw new Error("Offset inválido.");
+
+  if (options.asServiceRole) {
+    const request = { ...payload, filters: [...filters], limit: payload.limit ?? 100, ...(payload.offset != null ? { offset: payload.offset } : {}) };
+    if (["insert", "update"].includes(payload.action)) {
+      const records = Array.isArray(payload.values) ? payload.values : [payload.values];
+      if (records.length > 100 || (payload.action === "update" && records.length !== 1)) throw new Error("Lote inválido.");
+      request.values = records.map(record => {
+        if (!record || typeof record !== "object" || Array.isArray(record)) throw new Error("Registro inválido.");
+        const sanitized = {};
+        for (const [key, value] of Object.entries(record)) {
+          if (Object.hasOwn(fields, key) && !["id", "created_at", "updated_at"].includes(key)) {
+            sanitized[key] = value;
+          }
+        }
+        if (payload.action === "insert") {
+          sanitized.id = record.id || crypto.randomUUID();
+          sanitized.created_at = new Date().toISOString();
+          sanitized.updated_at = sanitized.created_at;
+          if (fields.user_id) sanitized.user_id = record.user_id || user?.id || "service_role";
+        } else {
+          sanitized.updated_at = new Date().toISOString();
+        }
+        return sanitized;
+      });
+      if (payload.action === "update") request.values = request.values[0];
+    }
+    return request;
+  }
 
   if (definition.access === "public") {
     if (payload.action !== "select") throw new Error("Entidade pública permite apenas leitura.");
@@ -81,13 +110,16 @@ export function authorizeQuery(payload, schema, user) {
   }
   return request;
 }
-export async function queryDatabase(payload, token, config, env, directory) {
+export async function queryDatabase(payload, token, config, env, directory, options = {}) {
   if (!["postgres", "mysql", "supabase"].includes(config.provider)) throw new Error("Este endpoint atende PostgreSQL, Supabase e MySQL.");
   const schema = discoverSchema(directory)?.schema;
   if (!schema) throw new Error("Schema ausente.");
   const definition = Object.entries(schema.entities).find(([name]) => tableName(name) === payload?.table)?.[1];
-  const user = definition?.access === "public" && payload?.action === "select" ? null : await verifyUser(token, config, env);
-  const request = authorizeQuery(payload, schema, user);
+  let user = options.user || null;
+  if (!options.asServiceRole) {
+    user = definition?.access === "public" && payload?.action === "select" ? null : (user || await verifyUser(token, config, env));
+  }
+  const request = authorizeQuery(payload, schema, user, options);
   const connection = await connectSql(config.provider, env.MOON_DATABASE_URL);
   try {
     const adapter = createSqlAdapter(connection, config.provider === "supabase" ? "postgres" : config.provider, schema);

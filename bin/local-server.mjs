@@ -15,12 +15,26 @@ function loadConfig() {
   try { return JSON.parse(readFileSync(configPath, "utf8")); } catch { return {}; }
 }
 
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  try {
+    const { hostname } = new URL(origin);
+    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1" || hostname.endsWith(".local")) return true;
+    if (/^10(?:\.\d{1,3}){3}$/.test(hostname)) return true;
+    if (/^192\.168(?:\.\d{1,3}){2}$/.test(hostname)) return true;
+    if (/^172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}$/.test(hostname)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function askAi(messages) {
   if (!Array.isArray(messages) || !messages.length || messages.length > 100 || messages.some(message => !["user", "assistant", "system"].includes(message.role) || typeof message.content !== "string" || message.content.length > 100000)) throw new Error("Mensagens de IA inválidas.");
   const provider = (process.env.MOON_AI_PROVIDER || "openai").toLowerCase();
   const key = process.env.MOON_AI_API_KEY;
   if (!key) throw new Error("API de IA não configurada");
-  const model = process.env.MOON_AI_MODEL || (provider === "gemini" ? "gemini-2.0-flash" : "gpt-4o-mini");
+  const model = process.env.MOON_AI_MODEL || (provider === "gemini" ? "gemini-3.6-flash" : "gpt-4o-mini");
   const base = process.env.MOON_AI_BASE_URL || (provider === "gemini" ? "https://generativelanguage.googleapis.com/v1beta" : provider === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
   let url = `${base.replace(/\/$/, "")}/chat/completions`;
   let headers = { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
@@ -48,7 +62,11 @@ async function askAi(messages) {
     error.publicMessage = result.status === 429 ? "A IA atingiu o limite de uso/cota. Confira a conta do provedor." : result.status === 404 ? "O modelo de IA configurado não está disponível para esta API/conta." : [401,403].includes(result.status) ? "A chave de IA foi recusada. Confira a chave e suas permissões." : "O provedor de IA recusou a solicitação. Confira a configuração.";
     throw error;
   }
-  const content = provider === "anthropic" ? data.content?.[0]?.text : provider === "gemini" ? data.candidates?.[0]?.content?.parts?.filter(part => !part.thought && part.text).map(part => part.text).join("") : data.choices?.[0]?.message?.content;
+  const content = provider === "anthropic"
+    ? data.content?.[0]?.text
+    : provider === "gemini"
+    ? (data.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "")
+    : data.choices?.[0]?.message?.content || "";
   if (!content) throw new Error("A IA não retornou conteúdo");
   return content;
 }
@@ -56,14 +74,14 @@ async function askAi(messages) {
 const server = createServer((request, response) => {
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   const origin = request.headers.origin || "";
-  if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) { response.statusCode = 403; response.end(JSON.stringify({error:"Origem não permitida."})); return; }
-  if (origin) response.setHeader("Access-Control-Allow-Origin", origin);
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (origin && !isAllowedOrigin(origin)) { response.statusCode = 403; response.end(JSON.stringify({error:"Origem não permitida."})); return; }
+  if (origin) {
+    response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  }
   if (request.method === "OPTIONS") { response.statusCode = 204; response.end(); return; }
   if (request.method === "POST" && request.url === "/api/database") {
-    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
-      response.statusCode = 403; response.end(JSON.stringify({ error: "Origem não permitida." })); return;
-    }
     let raw = "", size = 0, oversized = false;
     request.on("data", chunk => {
       size += chunk.length;
@@ -92,18 +110,18 @@ const server = createServer((request, response) => {
       try {
         if (oversized) throw new Error("Requisição excede 1 MB.");
         const token = (request.headers.authorization || "").replace(/^Bearer /, "");
-        if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         const payload = JSON.parse(raw || "{}");
         if (request.url.startsWith("/api/functions/")) {
           const result = await invokeLocalFunction(request.url.slice("/api/functions/".length), payload, token, loadConfig(), process.env, projectDir, askAi);
           response.statusCode = result.status; response.end(JSON.stringify(result.data)); return;
         }
+        if (!token) { response.statusCode = 401; response.end(JSON.stringify({error:"Entre na sua conta para usar o assistente."})); return; }
         await verifyUser(token, loadConfig(), process.env);
         const content = await askAi(Array.isArray(payload.messages) ? payload.messages : []);
         response.end(JSON.stringify({ content }));
       } catch (error) {
         response.statusCode = 502;
-        response.end(JSON.stringify({ error: error.publicMessage || "Falha na função/IA local. Confira login, configuração e recursos suportados." }));
+        response.end(JSON.stringify({ error: error.publicMessage || error.message || "Falha na função/IA local. Confira login, configuração e recursos suportados." }));
       }
     });
     return;

@@ -70,7 +70,10 @@ export function createBrowserClient(options: BrowserOptions) {
     database = createAdapter({ provider: "supabase", auth, async execute<T>(request: QueryRequest) {
       const publicTable = options.publicEntities?.some(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`) === request.table);
       const user = publicTable ? null : (await auth.getUser()).user;
-      if (!user && !publicTable) throw new Error("Login necessário.");
+      if (!user && !publicTable) {
+        if (request.action === "select") return { rows: [] as T[] };
+        throw new Error("Login necessário.");
+      }
       if (publicTable) {
         if (request.action !== "select") throw new Error("Entidade pública permite apenas leitura.");
         const session = (await auth.getSession()).session;
@@ -108,7 +111,10 @@ export function createBrowserClient(options: BrowserOptions) {
     database = createAdapter({ provider: options.provider, auth, async execute<T>(request: QueryRequest) {
       const publicTable = options.publicEntities?.some(entity => entity.replace(/[A-Z]/g, (letter, index) => `${index ? "_" : ""}${letter.toLowerCase()}`) === request.table);
       const session = (await auth.getSession()).session;
-      if (!session && !publicTable) throw new Error("Login necessário.");
+      if (!session && !publicTable) {
+        if (request.action === "select") return { rows: [] as T[] };
+        throw new Error("Login necessário.");
+      }
       if (publicTable && request.action !== "select") throw new Error("Entidade pública permite apenas leitura.");
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (session?.access_token) headers.Authorization = "Bearer " + session.access_token;
